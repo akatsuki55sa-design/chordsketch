@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ChordSketch v5.3</title>
+<title>ChordSketch v5.4</title>
 <style>
 :root{
   --bg:#081226;
@@ -100,43 +100,56 @@ audio{
   grid-template-columns:repeat(3,minmax(0,1fr));
   gap:10px;
 }
+.grid2{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+}
 @media (max-width:640px){
-  .grid{grid-template-columns:1fr}
+  .grid,.grid2{grid-template-columns:1fr}
 }
 </style>
 </head>
 <body>
 <div class="app">
-  <h1>ChordSketch v5.3</h1>
-  <p>クリック・録音開始・コード進行を同じ拍カウンタで動かす版。</p>
+  <h1>ChordSketch v5.4</h1>
+  <p>ウォームアップと再生オフセット調整を追加した版。</p>
 
   <div class="panel">
     <h2 style="margin:0 0 12px;">フック録音</h2>
 
     <div class="row">
+      <button id="warmupBtn" type="button">ウォームアップ</button>
       <button id="startRecBtn" type="button">録音開始</button>
       <button id="stopRecBtn" type="button">録音停止</button>
       <button id="downloadRecBtn" type="button">録音を保存</button>
     </div>
 
-    <div style="margin-top:12px;">
-      <label>曲名 / メモ名</label>
-      <input id="projectName" placeholder="例：新曲サビ候補A">
+    <div class="grid2" style="margin-top:12px;">
+      <div>
+        <label>曲名 / メモ名</label>
+        <input id="projectName" placeholder="例：新曲サビ候補A">
+      </div>
+      <div>
+        <label>BPM</label>
+        <input id="bpm" type="number" value="110" min="40" max="240">
+      </div>
     </div>
 
-    <div style="margin-top:12px;">
-      <label>BPM</label>
-      <input id="bpm" type="number" value="110" min="40" max="240">
+    <div class="grid2" style="margin-top:12px;">
+      <div>
+        <label>録音再生オフセット（秒）</label>
+        <input id="audioOffset" type="number" value="-0.12" step="0.01">
+      </div>
+      <div>
+        <label>
+          <input id="clickToggle" type="checkbox" checked style="width:auto;margin-right:8px;">
+          クリック音を鳴らす
+        </label>
+      </div>
     </div>
 
-    <div style="margin-top:12px;">
-      <label>
-        <input id="clickToggle" type="checkbox" checked style="width:auto;margin-right:8px;">
-        クリック音を鳴らす
-      </label>
-    </div>
-
-    <div class="status" id="recordStatus">「録音開始」で4カウント後に録音開始。</div>
+    <div class="status" id="recordStatus">最初にウォームアップ推奨。録音と再生のズレはオフセットで微調整。</div>
     <audio id="audioPlayer" controls></audio>
   </div>
 
@@ -150,7 +163,7 @@ audio{
       <button id="addBarsBtn" type="button">+4</button>
       <button id="loopBtn" type="button">LOOP</button>
     </div>
-    <div class="status" id="loopStatus">LOOPで録音・コード・クリックを同期再生する。</div>
+    <div class="status" id="loopStatus">録音とコードがズレる時はオフセット値を少しずつ動かす。</div>
   </div>
 
   <div class="panel">
@@ -188,6 +201,8 @@ const startRecBtn = document.getElementById("startRecBtn");
 const stopRecBtn = document.getElementById("stopRecBtn");
 const downloadRecBtn = document.getElementById("downloadRecBtn");
 const clickToggle = document.getElementById("clickToggle");
+const warmupBtn = document.getElementById("warmupBtn");
+const audioOffsetEl = document.getElementById("audioOffset");
 
 const state = {
   slots: ["-","-","-","-"],
@@ -199,7 +214,7 @@ const state = {
   recordedChunks: [],
   recordedBlob: null,
 
-  mode: "idle", // idle, countin-record, recording, loop
+  mode: "idle", // idle, warming, countin-record, recording, loop
   barIndex: 0,
 
   metroTimerId: null,
@@ -208,7 +223,8 @@ const state = {
   metroNextNoteTime: 0.0,
   metroBeatNumber: 0,
 
-  countInTargetBeats: 4
+  countInTargetBeats: 4,
+  warmedUp: false
 };
 
 function buildSelects(){
@@ -475,6 +491,38 @@ function moveRight(){
   renderTimeline();
 }
 
+async function warmupAudioAndMic(){
+  if(state.warmedUp) {
+    recordStatus.textContent = "ウォームアップ済み。";
+    return;
+  }
+
+  try{
+    state.mode = "warming";
+    recordStatus.textContent = "ウォームアップ中…";
+
+    await ensureAudio();
+
+    const osc = state.audioCtx.createOscillator();
+    const gain = state.audioCtx.createGain();
+    gain.gain.value = 0.00001;
+    osc.connect(gain);
+    gain.connect(state.audioCtx.destination);
+    osc.start();
+    osc.stop(state.audioCtx.currentTime + 0.02);
+
+    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+    stream.getTracks().forEach(t => t.stop());
+
+    state.warmedUp = true;
+    state.mode = "idle";
+    recordStatus.textContent = "ウォームアップ完了。";
+  }catch(e){
+    state.mode = "idle";
+    recordStatus.textContent = "ウォームアップ失敗。マイク許可を確認してみて。";
+  }
+}
+
 function stopLoop(){
   state.mode = "idle";
   stopMetronome();
@@ -495,10 +543,14 @@ async function startLoop(){
   state.barIndex = 0;
   document.getElementById("loopBtn").textContent = "STOP LOOP";
 
+  await ensureAudio();
+  await startMetronome();
+
   if(audioPlayer.src){
     try{
+      const offset = Number(audioOffsetEl.value) || 0;
       audioPlayer.pause();
-      audioPlayer.currentTime = 0;
+      audioPlayer.currentTime = Math.max(0, -offset);
       await audioPlayer.play();
       loopStatus.textContent = "録音 + コード + クリック同期再生中。";
     }catch(e){
@@ -508,7 +560,10 @@ async function startLoop(){
     loopStatus.textContent = "コード + クリック再生中。録音はまだ無し。";
   }
 
-  await startMetronome();
+  if((Number(audioOffsetEl.value) || 0) < 0){
+    const delayMs = Math.abs((Number(audioOffsetEl.value) || 0) * 1000);
+    setTimeout(()=>{ playBarByIndex(0); }, delayMs);
+  }
 }
 
 function toggleLoop(){
@@ -617,6 +672,7 @@ document.getElementById("leftBtn").onclick = moveLeft;
 document.getElementById("rightBtn").onclick = moveRight;
 document.getElementById("loopBtn").onclick = toggleLoop;
 
+warmupBtn.onclick = warmupAudioAndMic;
 startRecBtn.onclick = startRecording;
 stopRecBtn.onclick = stopRecording;
 downloadRecBtn.onclick = downloadRecording;
