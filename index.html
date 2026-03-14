@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ChordSketch v5.1</title>
+<title>ChordSketch v5.2</title>
 <style>
 :root{
   --bg:#081226;
@@ -107,8 +107,8 @@ audio{
 </head>
 <body>
 <div class="app">
-  <h1>ChordSketch v5.1</h1>
-  <p>クリック音を先に読み込んで安定させた版。</p>
+  <h1>ChordSketch v5.2</h1>
+  <p>WebAudio先読みスケジューラでクリックを安定化した版。</p>
 
   <div class="panel">
     <h2 style="margin:0 0 12px;">フック録音</h2>
@@ -173,8 +173,6 @@ audio{
 </div>
 
 <script>
-const CLICK_FILE = "click.wav";
-
 const roots = ["C","C#","D","Eb","E","F","F#","G","Ab","A","Bb","B"];
 const types = ["","m","7","maj7","m7","sus2","sus4","9","11","add9","aug","dim","m7b5","mM7"];
 
@@ -194,20 +192,29 @@ const clickToggle = document.getElementById("clickToggle");
 const state = {
   slots: ["-","-","-","-"],
   cursor: 0,
+
   loop: false,
-  beatTimer: null,
-  beatCount: 0,
+  loopBarTimer: null,
+
   countInTimer: null,
-  recordClickTimer: null,
   isCountIn: false,
+
+  recordClickScheduler: null,
+
   audioCtx: null,
   mediaRecorder: null,
   mediaStream: null,
   recordedChunks: [],
   recordedBlob: null,
   isRecording: false,
-  clickAudio: null,
-  clickReady: false
+
+  // metronome scheduling
+  metroTimerId: null,
+  metroLookahead: 25.0,
+  metroScheduleAheadTime: 0.12,
+  metroNextNoteTime: 0.0,
+  metroBeatNumber: 0,
+  metroRunning: false
 };
 
 function buildSelects(){
@@ -244,7 +251,9 @@ function renderTimeline(){
     div.type = "button";
     div.className = "slot";
     div.textContent = chord + " / " + (i + 1) + "小節目";
-    if(i === state.cursor) div.style.outline = "2px solid #3bb7ff";
+    if(i === state.cursor){
+      div.style.outline = "2px solid #3bb7ff";
+    }
     div.onclick = ()=>{
       state.cursor = i;
       renderTimeline();
@@ -270,7 +279,10 @@ async function ensureAudio(){
 }
 
 function noteFreq(note){
-  const map = {C:0,"C#":1,Db:1,D:2,"D#":3,Eb:3,E:4,F:5,"F#":6,Gb:6,G:7,"G#":8,Ab:8,A:9,"A#":10,Bb:10,B:11};
+  const map = {
+    C:0,"C#":1,Db:1,D:2,"D#":3,Eb:3,E:4,F:5,"F#":6,Gb:6,
+    G:7,"G#":8,Ab:8,A:9,"A#":10,Bb:10,B:11
+  };
   const midi = 60 + map[note];
   return 440 * Math.pow(2, (midi - 69) / 12);
 }
@@ -293,12 +305,16 @@ async function playChord(root, type){
     const note = roots[(rootIndex + i) % 12];
     const osc = state.audioCtx.createOscillator();
     const gain = state.audioCtx.createGain();
+
     osc.type = "sine";
     osc.frequency.value = noteFreq(note);
+
     osc.connect(gain);
     gain.connect(state.audioCtx.destination);
+
     gain.gain.setValueAtTime(0.15, state.audioCtx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.0001, state.audioCtx.currentTime + 1);
+
     osc.start();
     osc.stop(state.audioCtx.currentTime + 1);
   });
@@ -307,63 +323,100 @@ async function playChord(root, type){
 async function playBass(root){
   await ensureAudio();
 
-  const map = {C:0,"C#":1,Db:1,D:2,"D#":3,Eb:3,E:4,F:5,"F#":6,Gb:6,G:7,"G#":8,Ab:8,A:9,"A#":10,Bb:10,B:11};
+  const map = {
+    C:0,"C#":1,Db:1,D:2,"D#":3,Eb:3,E:4,F:5,"F#":6,Gb:6,
+    G:7,"G#":8,Ab:8,A:9,"A#":10,Bb:10,B:11
+  };
   const midi = 36 + map[root];
   const freq = 440 * Math.pow(2, (midi - 69) / 12);
 
   const osc = state.audioCtx.createOscillator();
   const gain = state.audioCtx.createGain();
+
   osc.type = "sawtooth";
   osc.frequency.value = freq;
+
   osc.connect(gain);
   gain.connect(state.audioCtx.destination);
+
   gain.gain.setValueAtTime(0.22, state.audioCtx.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.0001, state.audioCtx.currentTime + 1.2);
+
   osc.start();
   osc.stop(state.audioCtx.currentTime + 1.2);
 }
 
-function prepareClickAudio(){
-  const a = new Audio(CLICK_FILE);
-  a.preload = "auto";
-  a.load();
-  a.addEventListener("canplaythrough", ()=>{
-    state.clickReady = true;
-  }, { once:true });
-  state.clickAudio = a;
+// ---------- Stable Metronome ----------
+function metroSecondsPerBeat(){
+  return 60.0 / (Number(bpmEl.value) || 110);
 }
 
-async function playSingleClick(){
-  if(!clickToggle.checked) return;
+function scheduleClick(time, isDownbeat){
+  if(!clickToggle.checked || !state.audioCtx) return;
 
-  if(!state.clickAudio){
-    prepareClickAudio();
-  }
+  const osc = state.audioCtx.createOscillator();
+  const gain = state.audioCtx.createGain();
 
-  try{
-    state.clickAudio.pause();
-    state.clickAudio.currentTime = 0;
-    await state.clickAudio.play();
-  }catch(e){
-    try{
-      const fallback = new Audio(CLICK_FILE);
-      fallback.preload = "auto";
-      fallback.currentTime = 0;
-      await fallback.play();
-    }catch(e2){
-      // ignore
-    }
+  osc.type = "square";
+  osc.frequency.value = isDownbeat ? 1400 : 1000;
+
+  osc.connect(gain);
+  gain.connect(state.audioCtx.destination);
+
+  gain.gain.setValueAtTime(isDownbeat ? 0.35 : 0.22, time);
+  gain.gain.exponentialRampToValueAtTime(0.001, time + 0.04);
+
+  osc.start(time);
+  osc.stop(time + 0.04);
+}
+
+function metroNextNote(){
+  state.metroNextNoteTime += metroSecondsPerBeat();
+  state.metroBeatNumber++;
+}
+
+function metroScheduler(){
+  while(state.metroNextNoteTime < state.audioCtx.currentTime + state.metroScheduleAheadTime){
+    const beatInBar = state.metroBeatNumber % 4;
+    scheduleClick(state.metroNextNoteTime, beatInBar === 0);
+    metroNextNote();
   }
 }
+
+async function startMetronome(){
+  await ensureAudio();
+
+  stopMetronome();
+
+  state.metroBeatNumber = 0;
+  state.metroNextNoteTime = state.audioCtx.currentTime + 0.05;
+  state.metroRunning = true;
+
+  state.metroTimerId = setInterval(metroScheduler, state.metroLookahead);
+}
+
+function stopMetronome(){
+  if(state.metroTimerId){
+    clearInterval(state.metroTimerId);
+    state.metroTimerId = null;
+  }
+  state.metroRunning = false;
+}
+// --------------------------------------
 
 async function addChordToTimeline(){
   const chord = currentChordName();
   state.slots[state.cursor] = chord;
+
   const root = chord.match(/^[A-G][b#]?/)[0];
   const type = chord.replace(root, "").split("/")[0];
+
   await playChord(root, type);
   await playBass(root);
-  if(state.cursor < state.slots.length - 1) state.cursor++;
+
+  if(state.cursor < state.slots.length - 1){
+    state.cursor++;
+  }
   renderTimeline();
 }
 
@@ -387,8 +440,7 @@ function moveRight(){
   renderTimeline();
 }
 
-async function playCurrentBar(){
-  const barIndex = Math.floor(state.beatCount / 4) % state.slots.length;
+async function playCurrentBar(barIndex){
   state.cursor = barIndex;
   renderTimeline();
 
@@ -402,28 +454,34 @@ async function playCurrentBar(){
 }
 
 function stopLoop(){
-  if(state.beatTimer){
-    clearInterval(state.beatTimer);
-    state.beatTimer = null;
+  if(state.loopBarTimer){
+    clearInterval(state.loopBarTimer);
+    state.loopBarTimer = null;
   }
+
+  stopMetronome();
+
   state.loop = false;
-  state.beatCount = 0;
   document.getElementById("loopBtn").textContent = "LOOP";
   loopStatus.textContent = "LOOP停止。";
+
   if(!audioPlayer.paused){
     audioPlayer.pause();
     audioPlayer.currentTime = 0;
   }
+
   renderTimeline();
 }
 
 async function startLoop(){
   const bpm = Number(bpmEl.value) || 110;
-  const beatMs = 60000 / bpm;
+  const barMs = (60 / bpm) * 4 * 1000;
 
   state.loop = true;
-  state.beatCount = 0;
   document.getElementById("loopBtn").textContent = "STOP LOOP";
+
+  await ensureAudio();
+  await startMetronome();
 
   if(audioPlayer.src){
     try{
@@ -438,17 +496,13 @@ async function startLoop(){
     loopStatus.textContent = "コード + クリック再生中。録音はまだ無し。";
   }
 
-  const tick = async ()=>{
-    const beatInBar = state.beatCount % 4;
-    await playSingleClick();
-    if(beatInBar === 0){
-      await playCurrentBar();
-    }
-    state.beatCount++;
-  };
+  let currentBar = 0;
+  await playCurrentBar(currentBar);
 
-  await tick();
-  state.beatTimer = setInterval(()=>{ tick(); }, beatMs);
+  state.loopBarTimer = setInterval(()=>{
+    currentBar = (currentBar + 1) % state.slots.length;
+    playCurrentBar(currentBar);
+  }, barMs);
 }
 
 function toggleLoop(){
@@ -465,14 +519,7 @@ async function startRecording(){
   }
 
   try{
-    const bpm = Number(bpmEl.value) || 110;
-    const beatMs = 60000 / bpm;
-
     await ensureAudio();
-
-    if(!state.clickAudio){
-      prepareClickAudio();
-    }
 
     recordStatus.textContent = "マイク準備中…";
     state.mediaStream = await navigator.mediaDevices.getUserMedia({audio:true});
@@ -502,76 +549,64 @@ async function startRecording(){
       state.mediaRecorder = null;
       state.isRecording = false;
 
-      if(state.recordClickTimer){
-        clearInterval(state.recordClickTimer);
-        state.recordClickTimer = null;
-      }
+      stopMetronome();
 
       recordStatus.textContent = "録音できた。必要なら「録音を保存」でダウンロード。";
     };
 
     state.isCountIn = true;
-    recordStatus.textContent = "カウントイン中… 1小節後に録音開始";
+    recordStatus.textContent = "カウントイン中… 4カウント後に録音開始";
 
-    let count = 0;
+    await startMetronome();
 
-    const runCountIn = async ()=>{
-      await playSingleClick();
-      count++;
+    const countInMs = metroSecondsPerBeat() * 4 * 1000;
 
-      if(count >= 4){
-        clearInterval(state.countInTimer);
-        state.countInTimer = null;
-        state.isCountIn = false;
+    state.countInTimer = setTimeout(()=>{
+      state.isCountIn = false;
+      state.countInTimer = null;
 
-        recordStatus.textContent = "録音中…クリック継続中。「録音停止」で止める。";
+      recordStatus.textContent = "録音中…クリック継続中。「録音停止」で止める。";
 
-        state.mediaRecorder.start();
-        state.isRecording = true;
-
-        state.recordClickTimer = setInterval(()=>{
-          playSingleClick();
-        }, beatMs);
-      }
-    };
-
-    await runCountIn();
-    state.countInTimer = setInterval(()=>{ runCountIn(); }, beatMs);
+      state.mediaRecorder.start();
+      state.isRecording = true;
+    }, countInMs);
 
   }catch(err){
     state.isCountIn = false;
 
     if(state.countInTimer){
-      clearInterval(state.countInTimer);
+      clearTimeout(state.countInTimer);
       state.countInTimer = null;
     }
-    if(state.recordClickTimer){
-      clearInterval(state.recordClickTimer);
-      state.recordClickTimer = null;
-    }
+
+    stopMetronome();
 
     if(state.mediaStream){
       state.mediaStream.getTracks().forEach(t => t.stop());
       state.mediaStream = null;
     }
-    state.mediaRecorder = null;
 
-    recordStatus.textContent = "録音開始に失敗。マイク許可と click.wav を確認してみて。";
+    state.mediaRecorder = null;
+    recordStatus.textContent = "録音開始に失敗。マイク許可を確認してみて。";
   }
 }
 
 function stopRecording(){
   if(state.isCountIn){
     state.isCountIn = false;
+
     if(state.countInTimer){
-      clearInterval(state.countInTimer);
+      clearTimeout(state.countInTimer);
       state.countInTimer = null;
     }
+
     if(state.mediaStream){
       state.mediaStream.getTracks().forEach(t => t.stop());
       state.mediaStream = null;
     }
+
     state.mediaRecorder = null;
+    stopMetronome();
     recordStatus.textContent = "カウントインを停止した。";
     return;
   }
@@ -579,17 +614,12 @@ function stopRecording(){
   if(!state.mediaRecorder || !state.isRecording) return;
 
   recordStatus.textContent = "停止中…";
-
-  if(state.recordClickTimer){
-    clearInterval(state.recordClickTimer);
-    state.recordClickTimer = null;
-  }
-
   state.mediaRecorder.stop();
 }
 
 function downloadRecording(){
   if(!state.recordedBlob) return;
+
   const a = document.createElement("a");
   a.href = URL.createObjectURL(state.recordedBlob);
   a.download = "hook-recording.webm";
@@ -614,7 +644,6 @@ slashSel.onchange = ()=>{ playChord(rootSel.value, typeSel.value); };
 
 buildSelects();
 renderTimeline();
-prepareClickAudio();
 </script>
 </body>
 </html>
