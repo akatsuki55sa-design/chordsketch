@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ChordSketch v5</title>
+<title>ChordSketch v5.1</title>
 <style>
 :root{
   --bg:#081226;
@@ -107,8 +107,8 @@ audio{
 </head>
 <body>
 <div class="app">
-  <h1>ChordSketch v5</h1>
-  <p>マイクを先に開いてから4カウントする版。</p>
+  <h1>ChordSketch v5.1</h1>
+  <p>クリック音を先に読み込んで安定させた版。</p>
 
   <div class="panel">
     <h2 style="margin:0 0 12px;">フック録音</h2>
@@ -205,7 +205,9 @@ const state = {
   mediaStream: null,
   recordedChunks: [],
   recordedBlob: null,
-  isRecording: false
+  isRecording: false,
+  clickAudio: null,
+  clickReady: false
 };
 
 function buildSelects(){
@@ -321,15 +323,36 @@ async function playBass(root){
   osc.stop(state.audioCtx.currentTime + 1.2);
 }
 
-async function playSingleClick(){
-  if(!clickToggle.checked) return;
+function prepareClickAudio(){
   const a = new Audio(CLICK_FILE);
   a.preload = "auto";
+  a.load();
+  a.addEventListener("canplaythrough", ()=>{
+    state.clickReady = true;
+  }, { once:true });
+  state.clickAudio = a;
+}
+
+async function playSingleClick(){
+  if(!clickToggle.checked) return;
+
+  if(!state.clickAudio){
+    prepareClickAudio();
+  }
+
   try{
-    a.currentTime = 0;
-    await a.play();
+    state.clickAudio.pause();
+    state.clickAudio.currentTime = 0;
+    await state.clickAudio.play();
   }catch(e){
-    // ignore
+    try{
+      const fallback = new Audio(CLICK_FILE);
+      fallback.preload = "auto";
+      fallback.currentTime = 0;
+      await fallback.play();
+    }catch(e2){
+      // ignore
+    }
   }
 }
 
@@ -446,6 +469,10 @@ async function startRecording(){
     const beatMs = 60000 / bpm;
 
     await ensureAudio();
+
+    if(!state.clickAudio){
+      prepareClickAudio();
+    }
 
     recordStatus.textContent = "マイク準備中…";
     state.mediaStream = await navigator.mediaDevices.getUserMedia({audio:true});
@@ -587,6 +614,7 @@ slashSel.onchange = ()=>{ playChord(rootSel.value, typeSel.value); };
 
 buildSelects();
 renderTimeline();
+prepareClickAudio();
 </script>
 </body>
 </html>
