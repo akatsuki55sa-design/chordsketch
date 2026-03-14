@@ -200,4 +200,320 @@ const state = {
   mediaStream: null,
   recordedChunks: [],
   recordedBlob: null,
-  isRecording:
+  isRecording: false
+};
+
+function buildSelects(){
+  roots.forEach(r=>{
+    const o = document.createElement("option");
+    o.value = r;
+    o.textContent = r;
+    rootSel.appendChild(o);
+
+    const s = document.createElement("option");
+    s.value = r;
+    s.textContent = r;
+    slashSel.appendChild(s);
+  });
+
+  const none = document.createElement("option");
+  none.value = "";
+  none.textContent = "none";
+  slashSel.prepend(none);
+  slashSel.value = "";
+
+  types.forEach(t=>{
+    const o = document.createElement("option");
+    o.value = t;
+    o.textContent = t || "major";
+    typeSel.appendChild(o);
+  });
+}
+
+function renderTimeline(){
+  timelineEl.innerHTML = "";
+  state.slots.forEach((chord, i)=>{
+    const div = document.createElement("button");
+    div.type = "button";
+    div.className = "slot";
+    div.textContent = chord + " / " + (i + 1) + "小節目";
+    if(i === state.cursor) div.style.outline = "2px solid #3bb7ff";
+    div.onclick = ()=>{
+      state.cursor = i;
+      renderTimeline();
+    };
+    timelineEl.appendChild(div);
+  });
+}
+
+function currentChordName(){
+  const root = rootSel.value;
+  const type = typeSel.value;
+  const slash = slashSel.value;
+  return root + type + (slash ? "/" + slash : "");
+}
+
+function ensureAudio(){
+  if(!state.audioCtx){
+    state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if(state.audioCtx.state === "suspended"){
+    state.audioCtx.resume();
+  }
+}
+
+function noteFreq(note){
+  const map = {C:0,"C#":1,Db:1,D:2,"D#":3,Eb:3,E:4,F:5,"F#":6,Gb:6,G:7,"G#":8,Ab:8,A:9,"A#":10,Bb:10,B:11};
+  const midi = 60 + map[note];
+  return 440 * Math.pow(2, (midi - 69) / 12);
+}
+
+function playChord(root, type){
+  ensureAudio();
+  let intervals = [0,4,7];
+  if(type === "m") intervals = [0,3,7];
+  if(type === "7") intervals = [0,4,7,10];
+  if(type === "maj7") intervals = [0,4,7,11];
+  if(type === "m7") intervals = [0,3,7,10];
+  if(type === "sus2") intervals = [0,2,7];
+  if(type === "sus4") intervals = [0,5,7];
+  if(type === "dim") intervals = [0,3,6];
+  if(type === "aug") intervals = [0,4,8];
+
+  const rootIndex = roots.indexOf(root);
+  intervals.forEach(i=>{
+    const note = roots[(rootIndex + i) % 12];
+    const osc = state.audioCtx.createOscillator();
+    const gain = state.audioCtx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = noteFreq(note);
+    osc.connect(gain);
+    gain.connect(state.audioCtx.destination);
+    gain.gain.setValueAtTime(0.15, state.audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, state.audioCtx.currentTime + 1);
+    osc.start();
+    osc.stop(state.audioCtx.currentTime + 1);
+  });
+}
+
+function playBass(root){
+  ensureAudio();
+  const map = {C:0,"C#":1,Db:1,D:2,"D#":3,Eb:3,E:4,F:5,"F#":6,Gb:6,G:7,"G#":8,Ab:8,A:9,"A#":10,Bb:10,B:11};
+  const midi = 36 + map[root];
+  const freq = 440 * Math.pow(2, (midi - 69) / 12);
+  const osc = state.audioCtx.createOscillator();
+  const gain = state.audioCtx.createGain();
+  osc.type = "sawtooth";
+  osc.frequency.value = freq;
+  osc.connect(gain);
+  gain.connect(state.audioCtx.destination);
+  gain.gain.setValueAtTime(0.22, state.audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.0001, state.audioCtx.currentTime + 1.2);
+  osc.start();
+  osc.stop(state.audioCtx.currentTime + 1.2);
+}
+
+function playClick(isDownbeat){
+  if(!clickToggle.checked) return;
+  ensureAudio();
+
+  const osc = state.audioCtx.createOscillator();
+  const gain = state.audioCtx.createGain();
+
+  osc.type = "square";
+  osc.frequency.value = isDownbeat ? 1400 : 1000;
+
+  osc.connect(gain);
+  gain.connect(state.audioCtx.destination);
+
+  gain.gain.setValueAtTime(isDownbeat ? 0.35 : 0.2, state.audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, state.audioCtx.currentTime + 0.05);
+
+  osc.start();
+  osc.stop(state.audioCtx.currentTime + 0.05);
+}
+
+function addChordToTimeline(){
+  const chord = currentChordName();
+  state.slots[state.cursor] = chord;
+  const root = chord.match(/^[A-G][b#]?/)[0];
+  const type = chord.replace(root, "").split("/")[0];
+  playChord(root, type);
+  playBass(root);
+  if(state.cursor < state.slots.length - 1) state.cursor++;
+  renderTimeline();
+}
+
+function deleteChord(){
+  state.slots[state.cursor] = "-";
+  renderTimeline();
+}
+
+function addBars(){
+  state.slots.push("-","-","-","-");
+  renderTimeline();
+}
+
+function moveLeft(){
+  state.cursor = Math.max(0, state.cursor - 1);
+  renderTimeline();
+}
+
+function moveRight(){
+  state.cursor = Math.min(state.slots.length - 1, state.cursor + 1);
+  renderTimeline();
+}
+
+function playCurrentBar(){
+  const barIndex = Math.floor(state.beatCount / 4) % state.slots.length;
+  state.cursor = barIndex;
+  renderTimeline();
+
+  const chord = state.slots[barIndex];
+  if(chord !== "-"){
+    const root = chord.match(/^[A-G][b#]?/)[0];
+    const type = chord.replace(root, "").split("/")[0];
+    playChord(root, type);
+    playBass(root);
+  }
+}
+
+function stopLoop(){
+  if(state.beatTimer) clearInterval(state.beatTimer);
+  state.loop = false;
+  state.beatTimer = null;
+  state.beatCount = 0;
+  document.getElementById("loopBtn").textContent = "LOOP";
+  loopStatus.textContent = "LOOP停止。";
+  if(!audioPlayer.paused){
+    audioPlayer.pause();
+    audioPlayer.currentTime = 0;
+  }
+  renderTimeline();
+}
+
+async function startLoop(){
+  const bpm = Number(bpmEl.value) || 110;
+  const beatMs = 60000 / bpm;
+
+  state.loop = true;
+  state.beatCount = 0;
+  document.getElementById("loopBtn").textContent = "STOP LOOP";
+
+  if(audioPlayer.src){
+    try{
+      audioPlayer.pause();
+      audioPlayer.currentTime = 0;
+      await audioPlayer.play();
+      loopStatus.textContent = "録音 + コード + クリック同期再生中。";
+    }catch(e){
+      loopStatus.textContent = "コード + クリック再生中。録音は手動再生が必要かも。";
+    }
+  }else{
+    loopStatus.textContent = "コード + クリック再生中。録音はまだ無し。";
+  }
+
+  const tick = ()=>{
+    const beatInBar = state.beatCount % 4;
+    const isDownbeat = beatInBar === 0;
+
+    playClick(isDownbeat);
+
+    if(isDownbeat){
+      playCurrentBar();
+    }
+
+    state.beatCount++;
+  };
+
+  tick();
+  state.beatTimer = setInterval(tick, beatMs);
+}
+
+function toggleLoop(){
+  if(state.loop) stopLoop();
+  else startLoop();
+}
+
+async function startRecording(){
+  if(state.isRecording) return;
+
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    recordStatus.textContent = "このブラウザでは録音APIが使えないみたい。";
+    return;
+  }
+
+  try{
+    recordStatus.textContent = "録音中…「録音停止」で止める。";
+    state.mediaStream = await navigator.mediaDevices.getUserMedia({audio:true});
+    state.recordedChunks = [];
+    state.mediaRecorder = new MediaRecorder(state.mediaStream);
+
+    state.mediaRecorder.ondataavailable = (e)=>{
+      if(e.data && e.data.size > 0){
+        state.recordedChunks.push(e.data);
+      }
+    };
+
+    state.mediaRecorder.onstop = ()=>{
+      state.recordedBlob = new Blob(
+        state.recordedChunks,
+        { type: state.mediaRecorder.mimeType || "audio/webm" }
+      );
+
+      audioPlayer.src = URL.createObjectURL(state.recordedBlob);
+
+      if(state.mediaStream){
+        state.mediaStream.getTracks().forEach(t => t.stop());
+      }
+
+      state.mediaStream = null;
+      state.mediaRecorder = null;
+      state.isRecording = false;
+
+      recordStatus.textContent = "録音できた。必要なら「録音を保存」でダウンロード。";
+    };
+
+    state.mediaRecorder.start();
+    state.isRecording = true;
+  }catch(err){
+    state.isRecording = false;
+    recordStatus.textContent = "録音開始に失敗。Chromeのマイク許可を確認して再読み込みしてみて。";
+  }
+}
+
+function stopRecording(){
+  if(!state.mediaRecorder || !state.isRecording) return;
+  recordStatus.textContent = "停止中…";
+  state.mediaRecorder.stop();
+}
+
+function downloadRecording(){
+  if(!state.recordedBlob) return;
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(state.recordedBlob);
+  a.download = "hook-recording.webm";
+  a.click();
+}
+
+document.getElementById("addChordBtn").onclick = addChordToTimeline;
+document.getElementById("previewBtn").onclick = ()=>playChord(rootSel.value, typeSel.value);
+document.getElementById("deleteBtn").onclick = deleteChord;
+document.getElementById("addBarsBtn").onclick = addBars;
+document.getElementById("leftBtn").onclick = moveLeft;
+document.getElementById("rightBtn").onclick = moveRight;
+document.getElementById("loopBtn").onclick = toggleLoop;
+
+startRecBtn.onclick = startRecording;
+stopRecBtn.onclick = stopRecording;
+downloadRecBtn.onclick = downloadRecording;
+
+rootSel.onchange = ()=>playChord(rootSel.value, typeSel.value);
+typeSel.onchange = ()=>playChord(rootSel.value, typeSel.value);
+slashSel.onchange = ()=>playChord(rootSel.value, typeSel.value);
+
+buildSelects();
+renderTimeline();
+</script>
+</body>
+</html>
