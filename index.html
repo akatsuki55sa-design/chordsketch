@@ -111,13 +111,19 @@ button,select,input,textarea{
   background:linear-gradient(180deg,#1fc47d,#0b8d58);
   color:white;
 }
-.rec{
-  width:100%;
+.btn.warn{
+  background:linear-gradient(180deg,#ffb02e,#b86a00);
+  color:white;
+}
+.recButtons{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+}
+.bigBtn{
   min-height:110px;
   border-radius:28px;
-  background:linear-gradient(180deg,var(--danger1),var(--danger2));
-  color:white;
-  font-size:1.55rem;
+  font-size:1.3rem;
   font-weight:700;
   letter-spacing:.02em;
   border:1px solid rgba(255,255,255,.16);
@@ -125,8 +131,13 @@ button,select,input,textarea{
   box-shadow:inset 0 1px 0 rgba(255,255,255,.18);
   touch-action:manipulation;
 }
-.rec.recording{
+.startBtn{
+  background:linear-gradient(180deg,var(--danger1),var(--danger2));
+  color:white;
+}
+.stopBtn{
   background:linear-gradient(180deg,#ffb02e,#b86a00);
+  color:white;
 }
 .timeline{
   display:flex;
@@ -205,7 +216,7 @@ audio{
   line-height:1.5;
 }
 @media (max-width:640px){
-  .grid3,.grid2{
+  .grid3,.grid2,.recButtons{
     grid-template-columns:1fr;
   }
   .header h1{
@@ -227,7 +238,10 @@ audio{
       <div class="small" id="recordStateText">録音待機中</div>
     </div>
 
-    <button class="rec" id="recordBtn" type="button">🎤 RECORD</button>
+    <div class="recButtons">
+      <button class="bigBtn startBtn" id="startRecBtn" type="button">🎤 録音開始</button>
+      <button class="bigBtn stopBtn" id="stopRecBtn" type="button">■ 録音停止</button>
+    </div>
 
     <div class="grid2" style="margin-top:12px">
       <div class="field">
@@ -248,7 +262,7 @@ audio{
       </div>
     </div>
 
-    <div class="status" id="recordStatus">RECを押すと録音開始。もう一度押すと停止。</div>
+    <div class="status" id="recordStatus">「録音開始」で始めて、「録音停止」で止める。</div>
   </div>
 
   <div class="panel">
@@ -289,410 +303,4 @@ audio{
       </div>
     </div>
 
-    <div class="row" style="margin-top:12px">
-      <button class="btn primary" id="addChordBtn" type="button">追加</button>
-      <button class="btn" id="previewBtn" type="button">試聴</button>
-    </div>
-  </div>
-
-  <div class="panel">
-    <div class="titleRow">
-      <div class="title">歌詞メモ</div>
-      <div class="small">自動保存</div>
-    </div>
-    <textarea id="lyrics" placeholder="仮歌詞 / フレーズ / 連想ワード"></textarea>
-  </div>
-
-  <div class="panel">
-    <div class="titleRow">
-      <div class="title">プロジェクト保存</div>
-      <div class="small">このブラウザ内に保存</div>
-    </div>
-    <div class="row">
-      <button class="btn ok" id="saveProjectBtn" type="button">この状態を保存</button>
-      <button class="btn" id="loadProjectBtn" type="button">保存した状態を読み込む</button>
-      <button class="btn ghost" id="clearProjectBtn" type="button">保存データを削除</button>
-    </div>
-    <div class="status" id="projectStatus">まだ保存していません。</div>
-  </div>
-
-  <div class="footerNote">
-    保存先の考え方：<br>
-    ・録音ファイル → 「録音を保存」でスマホのダウンロードへ<br>
-    ・曲名 / BPM / コード / 歌詞 → ブラウザ内保存
-  </div>
-</div>
-
-<script>
-const roots = ["C","C#","D","Eb","E","F","F#","G","Ab","A","Bb","B"];
-const types = ["","m","7","maj7","m7","sus2","sus4","9","11","add9","aug","dim","m7b5","mM7"];
-
-const rootSel = document.getElementById("root");
-const typeSel = document.getElementById("type");
-const slashSel = document.getElementById("slash");
-const timelineEl = document.getElementById("timeline");
-const bpmEl = document.getElementById("bpm");
-const projectNameEl = document.getElementById("projectName");
-const lyricsEl = document.getElementById("lyrics");
-const recordBtn = document.getElementById("recordBtn");
-const recordStatus = document.getElementById("recordStatus");
-const recordStateText = document.getElementById("recordStateText");
-const audioBox = document.getElementById("audioBox");
-const audioPlayer = document.getElementById("audioPlayer");
-const audioInfo = document.getElementById("audioInfo");
-const projectStatus = document.getElementById("projectStatus");
-
-const STORAGE_KEY = "chordsketch-v2-project";
-
-const state = {
-  slots: ["-","-","-","-"],
-  cursor: 0,
-  loop: false,
-  loopTimer: null,
-  audioCtx: null,
-  mediaRecorder: null,
-  mediaStream: null,
-  recordedChunks: [],
-  recordedBlob: null,
-  isRecording: false
-};
-
-function buildSelects(){
-  roots.forEach(r=>{
-    const o = document.createElement("option");
-    o.value = r;
-    o.textContent = r;
-    rootSel.appendChild(o);
-
-    const s = document.createElement("option");
-    s.value = r;
-    s.textContent = r;
-    slashSel.appendChild(s);
-  });
-
-  const none = document.createElement("option");
-  none.value = "";
-  none.textContent = "none";
-  slashSel.prepend(none);
-  slashSel.value = "";
-
-  types.forEach(t=>{
-    const o = document.createElement("option");
-    o.value = t;
-    o.textContent = t || "major";
-    typeSel.appendChild(o);
-  });
-}
-
-function renderTimeline(){
-  timelineEl.innerHTML = "";
-  state.slots.forEach((chord, i)=>{
-    const slot = document.createElement("button");
-    slot.type = "button";
-    slot.className = "slot" + (i === state.cursor ? " active" : "");
-    slot.innerHTML = "<div>" + chord + "</div><div class='bar'>" + (i + 1) + "小節目</div>";
-    slot.onclick = () => {
-      state.cursor = i;
-      renderTimeline();
-    };
-    timelineEl.appendChild(slot);
-  });
-}
-
-function currentChordName(){
-  const root = rootSel.value;
-  const type = typeSel.value;
-  const slash = slashSel.value;
-  return root + type + (slash ? "/" + slash : "");
-}
-
-function ensureAudio(){
-  if(!state.audioCtx){
-    state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  }
-  if(state.audioCtx.state === "suspended"){
-    state.audioCtx.resume();
-  }
-}
-
-function noteFreq(note){
-  const map = {C:0,"C#":1,Db:1,D:2,"D#":3,Eb:3,E:4,F:5,"F#":6,Gb:6,G:7,"G#":8,Ab:8,A:9,"A#":10,Bb:10,B:11};
-  const midi = 60 + map[note];
-  return 440 * Math.pow(2,(midi - 69)/12);
-}
-
-function playChord(root, type){
-  ensureAudio();
-  let intervals = [0,4,7];
-  if(type === "m") intervals = [0,3,7];
-  if(type === "7") intervals = [0,4,7,10];
-  if(type === "maj7") intervals = [0,4,7,11];
-  if(type === "m7") intervals = [0,3,7,10];
-  if(type === "sus2") intervals = [0,2,7];
-  if(type === "sus4") intervals = [0,5,7];
-  if(type === "dim") intervals = [0,3,6];
-  if(type === "aug") intervals = [0,4,8];
-
-  const rootIndex = roots.indexOf(root);
-  intervals.forEach(i=>{
-    const note = roots[(rootIndex + i) % 12];
-    const osc = state.audioCtx.createOscillator();
-    const gain = state.audioCtx.createGain();
-    osc.type = "sine";
-    osc.frequency.value = noteFreq(note);
-    osc.connect(gain);
-    gain.connect(state.audioCtx.destination);
-    gain.gain.setValueAtTime(0.15, state.audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.0001, state.audioCtx.currentTime + 1);
-    osc.start();
-    osc.stop(state.audioCtx.currentTime + 1);
-  });
-}
-
-function playBass(root){
-  ensureAudio();
-  const map = {C:0,"C#":1,Db:1,D:2,"D#":3,Eb:3,E:4,F:5,"F#":6,Gb:6,G:7,"G#":8,Ab:8,A:9,"A#":10,Bb:10,B:11};
-  const midi = 36 + map[root];
-  const freq = 440 * Math.pow(2,(midi - 69)/12);
-  const osc = state.audioCtx.createOscillator();
-  const gain = state.audioCtx.createGain();
-  osc.type = "sawtooth";
-  osc.frequency.value = freq;
-  osc.connect(gain);
-  gain.connect(state.audioCtx.destination);
-  gain.gain.setValueAtTime(0.22, state.audioCtx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.0001, state.audioCtx.currentTime + 1.2);
-  osc.start();
-  osc.stop(state.audioCtx.currentTime + 1.2);
-}
-
-function playSelectedChord(){
-  playChord(rootSel.value, typeSel.value);
-}
-
-function addChordToTimeline(){
-  const chord = currentChordName();
-  state.slots[state.cursor] = chord;
-  const root = chord.match(/^[A-G][b#]?/)[0];
-  const type = chord.replace(root, "").split("/")[0];
-  playChord(root, type);
-  playBass(root);
-  if(state.cursor < state.slots.length - 1){
-    state.cursor++;
-  }
-  renderTimeline();
-  autoSaveDraft();
-}
-
-function deleteChord(){
-  state.slots[state.cursor] = "-";
-  renderTimeline();
-  autoSaveDraft();
-}
-
-function addBars(){
-  state.slots.push("-","-","-","-");
-  renderTimeline();
-  autoSaveDraft();
-}
-
-function moveLeft(){
-  state.cursor = Math.max(0, state.cursor - 1);
-  renderTimeline();
-}
-
-function moveRight(){
-  state.cursor = Math.min(state.slots.length - 1, state.cursor + 1);
-  renderTimeline();
-}
-
-function stopLoop(){
-  if(state.loopTimer) clearInterval(state.loopTimer);
-  state.loop = false;
-  state.loopTimer = null;
-  document.getElementById("loopBtn").textContent = "▶ LOOP";
-  renderTimeline();
-}
-
-function startLoop(){
-  const bpm = Number(bpmEl.value) || 110;
-  const barMs = 60000 / bpm * 4;
-  let i = 0;
-  state.loop = true;
-  document.getElementById("loopBtn").textContent = "■ STOP";
-  state.loopTimer = setInterval(()=>{
-    state.cursor = i;
-    renderTimeline();
-    const chord = state.slots[i];
-    if(chord !== "-"){
-      const root = chord.match(/^[A-G][b#]?/)[0];
-      const type = chord.replace(root, "").split("/")[0];
-      playChord(root, type);
-      playBass(root);
-    }
-    i++;
-    if(i >= state.slots.length) i = 0;
-  }, barMs);
-}
-
-function toggleLoop(){
-  if(state.loop) stopLoop();
-  else startLoop();
-}
-
-async function startRecording(){
-  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-    recordStatus.textContent = "このブラウザでは録音APIが使えないみたい。";
-    return;
-  }
-
-  try{
-    recordStateText.textContent = "録音中";
-    recordStatus.textContent = "録音中…もう一度押すと停止。";
-
-    state.mediaStream = await navigator.mediaDevices.getUserMedia({audio:true});
-    state.recordedChunks = [];
-    state.mediaRecorder = new MediaRecorder(state.mediaStream);
-
-    state.mediaRecorder.ondataavailable = (e)=>{
-      if(e.data && e.data.size > 0){
-        state.recordedChunks.push(e.data);
-      }
-    };
-
-    state.mediaRecorder.onstop = ()=>{
-      state.recordedBlob = new Blob(
-        state.recordedChunks,
-        { type: state.mediaRecorder.mimeType || "audio/webm" }
-      );
-
-      audioPlayer.src = URL.createObjectURL(state.recordedBlob);
-      audioBox.classList.add("show");
-      audioInfo.textContent = "録音あり (" + Math.round(state.recordedBlob.size / 1024) + " KB)";
-
-      if(state.mediaStream){
-        state.mediaStream.getTracks().forEach(t => t.stop());
-      }
-
-      state.mediaStream = null;
-      state.mediaRecorder = null;
-      state.isRecording = false;
-
-      recordBtn.classList.remove("recording");
-      recordBtn.textContent = "🎤 RECORD";
-      recordStateText.textContent = "録音完了";
-      recordStatus.textContent = "録音できた。必要なら『録音を保存』でダウンロード。";
-    };
-
-    state.mediaRecorder.start();
-    state.isRecording = true;
-    recordBtn.classList.add("recording");
-    recordBtn.textContent = "⏹ STOP";
-  }catch(err){
-    state.isRecording = false;
-    recordBtn.classList.remove("recording");
-    recordBtn.textContent = "🎤 RECORD";
-    recordStateText.textContent = "失敗";
-    recordStatus.textContent = "録音開始に失敗。Chromeでマイク許可を確認して再読み込みしてみて。";
-  }
-}
-
-function stopRecording(){
-  if(state.mediaRecorder && state.isRecording){
-    recordStatus.textContent = "停止中…";
-    state.mediaRecorder.stop();
-  }
-}
-
-function handleRecTap(e){
-  e.preventDefault();
-  e.stopPropagation();
-  if(state.isRecording){
-    stopRecording();
-  }else{
-    startRecording();
-  }
-}
-
-function downloadRecording(){
-  if(!state.recordedBlob) return;
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(state.recordedBlob);
-  const baseName = (projectNameEl.value || "hook-recording").trim().replace(/[\\/:*?"<>|]/g, "_");
-  a.download = baseName + ".webm";
-  a.click();
-}
-
-function projectPayload(){
-  return {
-    projectName: projectNameEl.value,
-    bpm: bpmEl.value,
-    slots: state.slots,
-    cursor: state.cursor,
-    lyrics: lyricsEl.value
-  };
-}
-
-function autoSaveDraft(){
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(projectPayload()));
-}
-
-function saveProject(){
-  autoSaveDraft();
-  projectStatus.textContent = "保存した。次にこのページを開いた時も復元できる。";
-}
-
-function loadProject(){
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if(!raw){
-    projectStatus.textContent = "保存データがまだ無い。";
-    return;
-  }
-
-  try{
-    const data = JSON.parse(raw);
-    projectNameEl.value = data.projectName || "";
-    bpmEl.value = data.bpm || "110";
-    state.slots = Array.isArray(data.slots) && data.slots.length ? data.slots : ["-","-","-","-"];
-    state.cursor = Number.isInteger(data.cursor) ? Math.min(data.cursor, state.slots.length - 1) : 0;
-    lyricsEl.value = data.lyrics || "";
-    renderTimeline();
-    projectStatus.textContent = "保存した状態を読み込んだ。";
-  }catch{
-    projectStatus.textContent = "保存データの読み込みに失敗。";
-  }
-}
-
-function clearProject(){
-  localStorage.removeItem(STORAGE_KEY);
-  projectStatus.textContent = "ブラウザ内の保存データを削除した。";
-}
-
-document.getElementById("addChordBtn").onclick = addChordToTimeline;
-document.getElementById("previewBtn").onclick = playSelectedChord;
-document.getElementById("deleteBtn").onclick = deleteChord;
-document.getElementById("addBarsBtn").onclick = addBars;
-document.getElementById("leftBtn").onclick = moveLeft;
-document.getElementById("rightBtn").onclick = moveRight;
-document.getElementById("loopBtn").onclick = toggleLoop;
-document.getElementById("downloadRecBtn").onclick = downloadRecording;
-document.getElementById("saveProjectBtn").onclick = saveProject;
-document.getElementById("loadProjectBtn").onclick = loadProject;
-document.getElementById("clearProjectBtn").onclick = clearProject;
-
-recordBtn.onclick = handleRecTap;
-
-rootSel.onchange = playSelectedChord;
-typeSel.onchange = playSelectedChord;
-slashSel.onchange = playSelectedChord;
-
-projectNameEl.addEventListener("input", autoSaveDraft);
-bpmEl.addEventListener("input", autoSaveDraft);
-lyricsEl.addEventListener("input", autoSaveDraft);
-
-buildSelects();
-renderTimeline();
-loadProject();
-</script>
-</body>
-</html>
+    <div
