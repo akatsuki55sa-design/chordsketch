@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ChordSketch v4.6</title>
+<title>ChordSketch v4.7</title>
 <style>
 :root{
   --bg:#081226;
@@ -107,8 +107,8 @@ audio{
 </head>
 <body>
 <div class="app">
-  <h1>ChordSketch v4.6</h1>
-  <p>カウントインのクリックが確実に鳴るようにした版。</p>
+  <h1>ChordSketch v4.7</h1>
+  <p>録音前カウントイン + 録音中クリック継続版。</p>
 
   <div class="panel">
     <h2 style="margin:0 0 12px;">フック録音</h2>
@@ -136,7 +136,7 @@ audio{
       </label>
     </div>
 
-    <div class="status" id="recordStatus">「録音開始」で1小節カウント後に録音開始。</div>
+    <div class="status" id="recordStatus">「録音開始」で4カウント後に録音開始。録音中もクリック継続。</div>
     <audio id="audioPlayer" controls></audio>
   </div>
 
@@ -196,6 +196,7 @@ const state = {
   beatTimer: null,
   beatCount: 0,
   countInTimer: null,
+  recordClickTimer: null,
   isCountIn: false,
   audioCtx: null,
   mediaRecorder: null,
@@ -323,6 +324,7 @@ async function playClick(isDownbeat){
 
   await ensureAudio();
 
+  const t = state.audioCtx.currentTime + 0.02;
   const osc = state.audioCtx.createOscillator();
   const gain = state.audioCtx.createGain();
 
@@ -332,11 +334,11 @@ async function playClick(isDownbeat){
   osc.connect(gain);
   gain.connect(state.audioCtx.destination);
 
-  gain.gain.setValueAtTime(isDownbeat ? 0.35 : 0.2, state.audioCtx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.001, state.audioCtx.currentTime + 0.05);
+  gain.gain.setValueAtTime(isDownbeat ? 0.35 : 0.2, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
 
-  osc.start();
-  osc.stop(state.audioCtx.currentTime + 0.05);
+  osc.start(t);
+  osc.stop(t + 0.05);
 }
 
 async function addChordToTimeline(){
@@ -381,6 +383,13 @@ async function playCurrentBar(){
     const type = chord.replace(root, "").split("/")[0];
     await playChord(root, type);
     await playBass(root);
+  }
+}
+
+function stopRecordClick(){
+  if(state.recordClickTimer){
+    clearInterval(state.recordClickTimer);
+    state.recordClickTimer = null;
   }
 }
 
@@ -473,7 +482,7 @@ async function startRecording(){
         state.countInTimer = null;
         state.isCountIn = false;
 
-        recordStatus.textContent = "録音中…「録音停止」で止める。";
+        recordStatus.textContent = "録音中…クリック継続中。「録音停止」で止める。";
 
         state.mediaStream = await navigator.mediaDevices.getUserMedia({audio:true});
         state.recordedChunks = [];
@@ -500,12 +509,19 @@ async function startRecording(){
           state.mediaStream = null;
           state.mediaRecorder = null;
           state.isRecording = false;
+          stopRecordClick();
 
           recordStatus.textContent = "録音できた。必要なら「録音を保存」でダウンロード。";
         };
 
         state.mediaRecorder.start();
         state.isRecording = true;
+
+        let recordBeat = 0;
+        state.recordClickTimer = setInterval(()=>{
+          playClick(recordBeat % 4 === 0);
+          recordBeat++;
+        }, beatMs);
       }
     };
 
@@ -518,6 +534,7 @@ async function startRecording(){
     state.isCountIn = false;
     if(state.countInTimer) clearInterval(state.countInTimer);
     state.countInTimer = null;
+    stopRecordClick();
     recordStatus.textContent = "録音開始に失敗。Chromeのマイク許可を確認して再読み込みしてみて。";
   }
 }
@@ -527,12 +544,14 @@ function stopRecording(){
     state.isCountIn = false;
     if(state.countInTimer) clearInterval(state.countInTimer);
     state.countInTimer = null;
+    stopRecordClick();
     recordStatus.textContent = "カウントインを停止した。";
     return;
   }
 
   if(!state.mediaRecorder || !state.isRecording) return;
   recordStatus.textContent = "停止中…";
+  stopRecordClick();
   state.mediaRecorder.stop();
 }
 
