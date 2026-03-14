@@ -1,0 +1,353 @@
+<!DOCTYPE html><html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ChordSketch</title>
+<style>
+:root{
+--bg:#0f172a;
+--panel:#111827;
+--panel2:#1f2937;
+--line:#334155;
+--accent:#38bdf8;
+--text:#e5e7eb;
+}
+body{
+margin:0;
+font-family:system-ui;
+background:linear-gradient(180deg,#0b1220,var(--bg));
+color:var(--text);
+}
+.app{
+max-width:900px;
+margin:auto;
+padding:14px;
+}
+.panel{
+background:rgba(17,24,39,.95);
+border:1px solid var(--line);
+border-radius:18px;
+padding:14px;
+margin-bottom:14px;
+box-shadow:0 10px 30px rgba(0,0,0,.35);
+}
+.title{
+font-weight:700;
+margin-bottom:8px;
+}
+.row{
+display:flex;
+gap:8px;
+flex-wrap:wrap;
+align-items:center;
+}
+.btn{
+background:var(--panel2);
+border:1px solid var(--line);
+border-radius:12px;
+padding:10px 14px;
+color:white;
+cursor:pointer;
+}
+.btn.primary{
+background:linear-gradient(180deg,#38bdf8,#0284c7);
+}
+.rec{
+width:100%;
+font-size:18px;
+padding:18px;
+border-radius:20px;
+background:linear-gradient(180deg,#ef4444,#7f1d1d);
+border:none;
+color:white;
+}
+.timeline{
+display:flex;
+gap:8px;
+overflow-x:auto;
+}
+.slot{
+min-width:110px;
+padding:12px;
+background:var(--panel2);
+border:1px solid var(--line);
+border-radius:14px;
+text-align:center;
+cursor:pointer;
+}
+.slot.active{
+outline:2px solid var(--accent);
+}
+.grid{
+display:grid;
+grid-template-columns:repeat(3,1fr);
+gap:8px;
+}
+select,input{
+background:var(--panel2);
+border:1px solid var(--line);
+color:white;
+padding:10px;
+border-radius:10px;
+width:100%;
+}
+textarea{
+width:100%;
+background:var(--panel2);
+border:1px solid var(--line);
+color:white;
+padding:10px;
+border-radius:10px;
+margin-top:8px;
+}
+</style>
+</head>
+<body>
+<div class="app"><div class="panel">
+<div class="title">フック録音</div>
+<button class="rec">🎤 RECORD</button>
+<div class="row" style="margin-top:10px">
+<label>BPM</label>
+<input id="bpm" type="number" value="110" style="width:100px">
+</div>
+</div><div class="panel">
+<div class="title">コード進行</div>
+<div class="timeline" id="timeline"></div><div class="row" style="margin-top:10px">
+<button class="btn" id="left">◀</button>
+<button class="btn" id="right">▶</button>
+<button class="btn" id="delete">⌫</button>
+<button class="btn" id="add4">+4</button>
+</div>
+</div><div class="panel">
+<div class="title">コード入力</div><div class="grid">
+<select id="root"></select>
+<select id="type"></select>
+<select id="slash"></select>
+</div><div class="row" style="margin-top:10px">
+<button class="btn primary" id="addChord">追加</button>
+<button class="btn" id="preview">試聴</button>
+</div><textarea placeholder="歌詞メモ"></textarea></div></div><script>
+
+const roots=["C","C#","D","Eb","E","F","F#","G","Ab","A","Bb","B"]
+const types=["","m","7","maj7","m7","sus2","sus4","9","11","add9","aug","dim","m7b5","mM7"]
+
+const rootSel=document.getElementById("root")
+const typeSel=document.getElementById("type")
+const slashSel=document.getElementById("slash")
+
+roots.forEach(r=>{
+let o=document.createElement("option")
+o.value=r
+o.textContent=r
+rootSel.appendChild(o)
+
+let s=document.createElement("option")
+s.value=r
+s.textContent=r
+slashSel.appendChild(s)
+})
+
+let none=document.createElement("option")
+none.value=""
+none.textContent="none"
+slashSel.prepend(none)
+slashSel.value=""
+
+types.forEach(t=>{
+let o=document.createElement("option")
+o.value=t
+o.textContent=t||"major"
+typeSel.appendChild(o)
+})
+
+const state={slots:["-","-","-","-"],cursor:0}
+
+function render(){
+let t=document.getElementById("timeline")
+t.innerHTML=""
+
+state.slots.forEach((c,i)=>{
+let s=document.createElement("div")
+s.className="slot"
+if(i==state.cursor)s.classList.add("active")
+s.textContent=c
+
+s.onclick=()=>{
+state.cursor=i
+render()
+}
+
+t.appendChild(s)
+})
+}
+
+function chord(){
+let r=rootSel.value
+let t=typeSel.value
+let s=slashSel.value
+return r+t+(s?"/"+s:"")
+}
+
+let audioCtx=null
+
+function freq(note){
+const map={C:0,"C#":1,Db:1,D:2,"D#":3,Eb:3,E:4,F:5,"F#":6,Gb:6,G:7,"G#":8,Ab:8,A:9,"A#":10,Bb:10,B:11}
+let midi=60+map[note]
+return 440*Math.pow(2,(midi-69)/12)
+}
+
+function play(){
+if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)()
+
+let root=rootSel.value
+let type=typeSel.value
+
+let intervals=[0,4,7]
+if(type=="m")intervals=[0,3,7]
+if(type=="7")intervals=[0,4,7,10]
+if(type=="maj7")intervals=[0,4,7,11]
+if(type=="m7")intervals=[0,3,7,10]
+if(type=="sus2")intervals=[0,2,7]
+if(type=="sus4")intervals=[0,5,7]
+if(type=="dim")intervals=[0,3,6]
+if(type=="aug")intervals=[0,4,8]
+
+let rootIndex=roots.indexOf(root)
+
+intervals.forEach(i=>{
+let note=roots[(rootIndex+i)%12]
+let f=freq(note)
+
+let osc=audioCtx.createOscillator()
+let g=audioCtx.createGain()
+
+osc.type="sine"
+osc.frequency.value=f
+
+osc.connect(g)
+g.connect(audioCtx.destination)
+
+g.gain.setValueAtTime(.15,audioCtx.currentTime)
+g.gain.exponentialRampToValueAtTime(.0001,audioCtx.currentTime+1)
+
+osc.start()
+osc.stop(audioCtx.currentTime+1)
+})
+}
+
+rootSel.onchange=play
+typeSel.onchange=play
+slashSel.onchange=play
+
+function addChord(){
+state.slots[state.cursor]=chord()
+play()
+if(state.cursor<state.slots.length-1)state.cursor++
+render()
+}
+
+function del(){
+state.slots[state.cursor]="-"
+render()
+}
+
+function add4(){
+state.slots.push("-","-","-","-")
+render()
+}
+
+document.getElementById("addChord").onclick=addChord
+
+document.getElementById("delete").onclick=del
+
+document.getElementById("add4").onclick=add4
+
+document.getElementById("left").onclick=()=>{state.cursor=Math.max(0,state.cursor-1);render()}
+
+document.getElementById("right").onclick=()=>{state.cursor=Math.min(state.slots.length-1,state.cursor+1);render()}
+
+render()
+
+// ---- 簡易コードループ再生 + ベース自動生成 ----
+let loopPlaying=false
+let loopTimer=null
+
+function playBass(root){
+ if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)()
+ const map={C:0,"C#":1,Db:1,D:2,"D#":3,Eb:3,E:4,F:5,"F#":6,Gb:6,G:7,"G#":8,Ab:8,A:9,"A#":10,Bb:10,B:11}
+ let midi=36+map[root]
+ let freq=440*Math.pow(2,(midi-69)/12)
+
+ let osc=audioCtx.createOscillator()
+ let g=audioCtx.createGain()
+ osc.type="sawtooth"
+ osc.frequency.value=freq
+ osc.connect(g)
+ g.connect(audioCtx.destination)
+ g.gain.setValueAtTime(.2,audioCtx.currentTime)
+ g.gain.exponentialRampToValueAtTime(.0001,audioCtx.currentTime+1.2)
+ osc.start()
+ osc.stop(audioCtx.currentTime+1.2)
+}
+
+function playChordByName(name){
+ if(name=="-")return
+
+ let root=name.match(/^[A-G][b#]?/)[0]
+ let type=name.replace(root,"").split("/")[0]
+
+ rootSel.value=root
+ typeSel.value=type
+
+ play()
+ playBass(root)
+
+}
+
+function startLoop(){
+ const bpm=document.getElementById("bpm")?.value||110
+ const beat=60000/bpm
+ const barTime=beat*4
+
+ let i=0
+ loopPlaying=true
+
+ loopTimer=setInterval(()=>{
+ let chord=state.slots[i]
+ playChordByName(chord)
+
+ document.querySelectorAll('.slot').forEach(s=>s.classList.remove('active'))
+ if(document.querySelectorAll('.slot')[i])
+ document.querySelectorAll('.slot')[i].classList.add('active')
+
+ i++
+ if(i>=state.slots.length)i=0
+
+ },barTime)
+}
+
+function stopLoop(){
+ loopPlaying=false
+ clearInterval(loopTimer)
+ render()
+}
+
+// ループボタン追加
+const loopBtn=document.createElement('button')
+loopBtn.className='btn'
+loopBtn.textContent='▶ LOOP'
+
+document.querySelector('.panel:nth-of-type(2) .row').appendChild(loopBtn)
+
+loopBtn.onclick=()=>{
+ if(loopPlaying){
+ stopLoop()
+ loopBtn.textContent='▶ LOOP'
+ }else{
+ startLoop()
+ loopBtn.textContent='■ STOP'
+ }
+}
+
+</script></body>
+</html>
