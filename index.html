@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ChordSketch v2</title>
+<title>ChordSketch Lite</title>
 <style>
 :root{
   --bg:#081226;
@@ -12,61 +12,32 @@
   --line:#31435f;
   --text:#e8eefc;
   --muted:#9fb0d1;
-  --accent:#3bb7ff;
-  --accent2:#0c8fe0;
-  --danger1:#ff4d57;
-  --danger2:#b11f2b;
-  --ok:#18b570;
 }
-*{
-  box-sizing:border-box;
-  -webkit-tap-highlight-color:transparent;
-}
-html,body{
+*{box-sizing:border-box}
+body{
   margin:0;
-  padding:0;
-  background:linear-gradient(180deg,#071020,#0a1630 35%,#081226);
+  font-family:system-ui,-apple-system,sans-serif;
+  background:#081226;
   color:var(--text);
-  font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
 }
-body{min-height:100vh}
 .app{
   max-width:860px;
   margin:0 auto;
   padding:16px;
 }
-.header{
-  margin-bottom:12px;
-}
-.header h1{
-  margin:0 0 4px;
-  font-size:1.9rem;
-}
-.header p{
-  margin:0;
-  color:var(--muted);
-}
 .panel{
   background:rgba(15,27,51,.96);
   border:1px solid var(--line);
-  border-radius:22px;
+  border-radius:18px;
   padding:16px;
   margin-bottom:14px;
-  box-shadow:0 14px 30px rgba(0,0,0,.28);
 }
-.titleRow{
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  gap:10px;
-  margin-bottom:12px;
+h1{
+  margin:0 0 6px;
+  font-size:1.8rem;
 }
-.title{
-  font-size:1.1rem;
-  font-weight:700;
-}
-.small{
-  font-size:.92rem;
+p{
+  margin:0 0 12px;
   color:var(--muted);
 }
 .row{
@@ -75,232 +46,406 @@ body{min-height:100vh}
   flex-wrap:wrap;
   align-items:center;
 }
-.grid3{
-  display:grid;
-  grid-template-columns:repeat(3,minmax(0,1fr));
-  gap:10px;
-}
-.grid2{
-  display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:10px;
-}
-button,select,input,textarea{
+button,input,select,textarea{
   font:inherit;
-  border:none;
-  outline:none;
 }
-.btn{
-  min-height:48px;
-  padding:0 16px;
-  border-radius:16px;
-  background:var(--panel2);
-  color:var(--text);
+button{
+  padding:14px 16px;
+  border-radius:12px;
   border:1px solid var(--line);
-  cursor:pointer;
-  touch-action:manipulation;
-}
-.btn.primary{
-  background:linear-gradient(180deg,var(--accent),var(--accent2));
+  background:#1b2b47;
   color:white;
 }
-.btn.ghost{
-  background:rgba(24,38,64,.65);
-}
-.btn.ok{
-  background:linear-gradient(180deg,#1fc47d,#0b8d58);
-  color:white;
-}
-.btn.warn{
-  background:linear-gradient(180deg,#ffb02e,#b86a00);
-  color:white;
-}
-.recButtons{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:12px;
-}
-.bigBtn{
-  min-height:110px;
-  border-radius:28px;
-  font-size:1.3rem;
-  font-weight:700;
-  letter-spacing:.02em;
-  border:1px solid rgba(255,255,255,.16);
-  cursor:pointer;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.18);
-  touch-action:manipulation;
-}
-.startBtn{
-  background:linear-gradient(180deg,var(--danger1),var(--danger2));
-  color:white;
-}
-.stopBtn{
-  background:linear-gradient(180deg,#ffb02e,#b86a00);
-  color:white;
-}
-.timeline{
-  display:flex;
-  gap:10px;
-  overflow-x:auto;
-  padding-bottom:2px;
-}
-.slot{
-  min-width:116px;
-  flex:0 0 auto;
-  border-radius:18px;
-  padding:14px 12px;
-  text-align:center;
-  background:var(--panel2);
-  border:1px solid var(--line);
-  cursor:pointer;
-}
-.slot.active{
-  outline:2px solid var(--accent);
-}
-.slot .bar{
-  font-size:.84rem;
-  color:var(--muted);
-  margin-top:6px;
-}
-.field label{
-  display:block;
-  font-size:.9rem;
-  color:var(--muted);
-  margin:0 0 6px;
+button:active{
+  transform:scale(.99);
 }
 input,select,textarea{
   width:100%;
-  background:var(--panel2);
-  color:var(--text);
+  padding:12px;
+  border-radius:12px;
   border:1px solid var(--line);
-  border-radius:16px;
-  padding:14px;
+  background:#182640;
+  color:white;
 }
 textarea{
-  min-height:96px;
-  resize:vertical;
+  min-height:90px;
+}
+.timeline{
+  display:flex;
+  gap:8px;
+  overflow-x:auto;
+  margin-bottom:12px;
+}
+.slot{
+  min-width:110px;
+  padding:12px;
+  border-radius:12px;
+  border:1px solid var(--line);
+  background:#182640;
+  text-align:center;
 }
 .status{
   margin-top:10px;
   padding:10px 12px;
-  border-radius:14px;
-  background:rgba(24,38,64,.6);
-  border:1px solid var(--line);
+  border-radius:12px;
+  background:#182640;
   color:var(--muted);
-}
-.audioBox{
-  display:none;
-  margin-top:10px;
-}
-.audioBox.show{
-  display:block;
 }
 audio{
   width:100%;
+  margin-top:10px;
 }
-.chip{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  min-height:36px;
-  padding:0 12px;
-  border-radius:999px;
-  background:rgba(24,38,64,.55);
-  border:1px solid var(--line);
-  color:var(--text);
-}
-.footerNote{
-  font-size:.88rem;
-  color:var(--muted);
-  line-height:1.5;
+.grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:10px;
 }
 @media (max-width:640px){
-  .grid3,.grid2,.recButtons{
-    grid-template-columns:1fr;
-  }
-  .header h1{
-    font-size:1.65rem;
-  }
+  .grid{grid-template-columns:1fr}
 }
 </style>
 </head>
 <body>
 <div class="app">
-  <div class="header">
-    <h1>ChordSketch v2</h1>
-    <p>鼻歌・コード・歌詞を、スマホでひとまとめに残す。</p>
-  </div>
+  <h1>ChordSketch Lite</h1>
+  <p>まずは録音が確実に動く版。</p>
 
   <div class="panel">
-    <div class="titleRow">
-      <div class="title">フック録音</div>
-      <div class="small" id="recordStateText">録音待機中</div>
+    <h2 style="margin:0 0 12px;">フック録音</h2>
+
+    <div class="row">
+      <button id="startRecBtn" type="button">録音開始</button>
+      <button id="stopRecBtn" type="button">録音停止</button>
+      <button id="downloadRecBtn" type="button">録音を保存</button>
     </div>
 
-    <div class="recButtons">
-      <button class="bigBtn startBtn" id="startRecBtn" type="button">🎤 録音開始</button>
-      <button class="bigBtn stopBtn" id="stopRecBtn" type="button">■ 録音停止</button>
+    <div style="margin-top:12px;">
+      <label>曲名 / メモ名</label>
+      <input id="projectName" placeholder="例：新曲サビ候補A">
     </div>
 
-    <div class="grid2" style="margin-top:12px">
-      <div class="field">
-        <label for="projectName">曲名 / メモ名</label>
-        <input id="projectName" placeholder="例：新曲サビ候補A">
-      </div>
-      <div class="field">
-        <label for="bpm">BPM</label>
-        <input id="bpm" type="number" value="110" min="40" max="240">
-      </div>
-    </div>
-
-    <div class="audioBox" id="audioBox">
-      <audio id="audioPlayer" controls></audio>
-      <div class="row" style="margin-top:10px">
-        <button class="btn ok" id="downloadRecBtn" type="button">録音を保存</button>
-        <span class="chip" id="audioInfo">録音あり</span>
-      </div>
+    <div style="margin-top:12px;">
+      <label>BPM</label>
+      <input id="bpm" type="number" value="110" min="40" max="240">
     </div>
 
     <div class="status" id="recordStatus">「録音開始」で始めて、「録音停止」で止める。</div>
+    <audio id="audioPlayer" controls></audio>
   </div>
 
   <div class="panel">
-    <div class="titleRow">
-      <div class="title">コード進行</div>
-      <div class="small">タップで小節選択</div>
-    </div>
-
+    <h2 style="margin:0 0 12px;">コード進行</h2>
     <div class="timeline" id="timeline"></div>
-
-    <div class="row" style="margin-top:12px">
-      <button class="btn ghost" id="leftBtn" type="button">◀</button>
-      <button class="btn ghost" id="rightBtn" type="button">▶</button>
-      <button class="btn ghost" id="deleteBtn" type="button">⌫</button>
-      <button class="btn ghost" id="addBarsBtn" type="button">+4</button>
-      <button class="btn" id="loopBtn" type="button">▶ LOOP</button>
+    <div class="row">
+      <button id="leftBtn" type="button">◀</button>
+      <button id="rightBtn" type="button">▶</button>
+      <button id="deleteBtn" type="button">⌫</button>
+      <button id="addBarsBtn" type="button">+4</button>
+      <button id="loopBtn" type="button">LOOP</button>
     </div>
   </div>
 
   <div class="panel">
-    <div class="titleRow">
-      <div class="title">コード入力</div>
-      <div class="small">選んだ瞬間に鳴る</div>
+    <h2 style="margin:0 0 12px;">コード入力</h2>
+    <div class="grid">
+      <select id="root"></select>
+      <select id="type"></select>
+      <select id="slash"></select>
     </div>
-
-    <div class="grid3">
-      <div class="field">
-        <label for="root">Root</label>
-        <select id="root"></select>
-      </div>
-      <div class="field">
-        <label for="type">Type</label>
-        <select id="type"></select>
-      </div>
-      <div class="field">
-        <label for="slash">Slash</label>
-        <select id="slash"></select>
-      </div>
+    <div class="row" style="margin-top:12px;">
+      <button id="addChordBtn" type="button">追加</button>
+      <button id="previewBtn" type="button">試聴</button>
     </div>
+  </div>
 
-    <div
+  <div class="panel">
+    <h2 style="margin:0 0 12px;">歌詞メモ</h2>
+    <textarea id="lyrics" placeholder="仮歌詞 / フレーズ / 連想ワード"></textarea>
+  </div>
+</div>
+
+<script>
+const roots = ["C","C#","D","Eb","E","F","F#","G","Ab","A","Bb","B"];
+const types = ["","m","7","maj7","m7","sus2","sus4","9","11","add9","aug","dim","m7b5","mM7"];
+
+const rootSel = document.getElementById("root");
+const typeSel = document.getElementById("type");
+const slashSel = document.getElementById("slash");
+const timelineEl = document.getElementById("timeline");
+const bpmEl = document.getElementById("bpm");
+const audioPlayer = document.getElementById("audioPlayer");
+const recordStatus = document.getElementById("recordStatus");
+const startRecBtn = document.getElementById("startRecBtn");
+const stopRecBtn = document.getElementById("stopRecBtn");
+const downloadRecBtn = document.getElementById("downloadRecBtn");
+
+const state = {
+  slots: ["-","-","-","-"],
+  cursor: 0,
+  loop: false,
+  loopTimer: null,
+  audioCtx: null,
+  mediaRecorder: null,
+  mediaStream: null,
+  recordedChunks: [],
+  recordedBlob: null,
+  isRecording: false
+};
+
+function buildSelects(){
+  roots.forEach(r=>{
+    const o = document.createElement("option");
+    o.value = r;
+    o.textContent = r;
+    rootSel.appendChild(o);
+
+    const s = document.createElement("option");
+    s.value = r;
+    s.textContent = r;
+    slashSel.appendChild(s);
+  });
+
+  const none = document.createElement("option");
+  none.value = "";
+  none.textContent = "none";
+  slashSel.prepend(none);
+  slashSel.value = "";
+
+  types.forEach(t=>{
+    const o = document.createElement("option");
+    o.value = t;
+    o.textContent = t || "major";
+    typeSel.appendChild(o);
+  });
+}
+
+function renderTimeline(){
+  timelineEl.innerHTML = "";
+  state.slots.forEach((chord, i)=>{
+    const div = document.createElement("button");
+    div.type = "button";
+    div.className = "slot";
+    div.textContent = chord + " / " + (i + 1) + "小節目";
+    if(i === state.cursor) div.style.outline = "2px solid #3bb7ff";
+    div.onclick = ()=>{
+      state.cursor = i;
+      renderTimeline();
+    };
+    timelineEl.appendChild(div);
+  });
+}
+
+function currentChordName(){
+  const root = rootSel.value;
+  const type = typeSel.value;
+  const slash = slashSel.value;
+  return root + type + (slash ? "/" + slash : "");
+}
+
+function ensureAudio(){
+  if(!state.audioCtx){
+    state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if(state.audioCtx.state === "suspended"){
+    state.audioCtx.resume();
+  }
+}
+
+function noteFreq(note){
+  const map = {C:0,"C#":1,Db:1,D:2,"D#":3,Eb:3,E:4,F:5,"F#":6,Gb:6,G:7,"G#":8,Ab:8,A:9,"A#":10,Bb:10,B:11};
+  const midi = 60 + map[note];
+  return 440 * Math.pow(2, (midi - 69) / 12);
+}
+
+function playChord(root, type){
+  ensureAudio();
+  let intervals = [0,4,7];
+  if(type === "m") intervals = [0,3,7];
+  if(type === "7") intervals = [0,4,7,10];
+  if(type === "maj7") intervals = [0,4,7,11];
+  if(type === "m7") intervals = [0,3,7,10];
+  if(type === "sus2") intervals = [0,2,7];
+  if(type === "sus4") intervals = [0,5,7];
+  if(type === "dim") intervals = [0,3,6];
+  if(type === "aug") intervals = [0,4,8];
+
+  const rootIndex = roots.indexOf(root);
+  intervals.forEach(i=>{
+    const note = roots[(rootIndex + i) % 12];
+    const osc = state.audioCtx.createOscillator();
+    const gain = state.audioCtx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = noteFreq(note);
+    osc.connect(gain);
+    gain.connect(state.audioCtx.destination);
+    gain.gain.setValueAtTime(0.15, state.audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, state.audioCtx.currentTime + 1);
+    osc.start();
+    osc.stop(state.audioCtx.currentTime + 1);
+  });
+}
+
+function playBass(root){
+  ensureAudio();
+  const map = {C:0,"C#":1,Db:1,D:2,"D#":3,Eb:3,E:4,F:5,"F#":6,Gb:6,G:7,"G#":8,Ab:8,A:9,"A#":10,Bb:10,B:11};
+  const midi = 36 + map[root];
+  const freq = 440 * Math.pow(2, (midi - 69) / 12);
+  const osc = state.audioCtx.createOscillator();
+  const gain = state.audioCtx.createGain();
+  osc.type = "sawtooth";
+  osc.frequency.value = freq;
+  osc.connect(gain);
+  gain.connect(state.audioCtx.destination);
+  gain.gain.setValueAtTime(0.22, state.audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.0001, state.audioCtx.currentTime + 1.2);
+  osc.start();
+  osc.stop(state.audioCtx.currentTime + 1.2);
+}
+
+function addChordToTimeline(){
+  const chord = currentChordName();
+  state.slots[state.cursor] = chord;
+  const root = chord.match(/^[A-G][b#]?/)[0];
+  const type = chord.replace(root, "").split("/")[0];
+  playChord(root, type);
+  playBass(root);
+  if(state.cursor < state.slots.length - 1) state.cursor++;
+  renderTimeline();
+}
+
+function deleteChord(){
+  state.slots[state.cursor] = "-";
+  renderTimeline();
+}
+
+function addBars(){
+  state.slots.push("-","-","-","-");
+  renderTimeline();
+}
+
+function moveLeft(){
+  state.cursor = Math.max(0, state.cursor - 1);
+  renderTimeline();
+}
+
+function moveRight(){
+  state.cursor = Math.min(state.slots.length - 1, state.cursor + 1);
+  renderTimeline();
+}
+
+function stopLoop(){
+  if(state.loopTimer) clearInterval(state.loopTimer);
+  state.loop = false;
+  state.loopTimer = null;
+  document.getElementById("loopBtn").textContent = "LOOP";
+  renderTimeline();
+}
+
+function startLoop(){
+  const bpm = Number(bpmEl.value) || 110;
+  const barMs = 60000 / bpm * 4;
+  let i = 0;
+  state.loop = true;
+  document.getElementById("loopBtn").textContent = "STOP LOOP";
+  state.loopTimer = setInterval(()=>{
+    state.cursor = i;
+    renderTimeline();
+    const chord = state.slots[i];
+    if(chord !== "-"){
+      const root = chord.match(/^[A-G][b#]?/)[0];
+      const type = chord.replace(root, "").split("/")[0];
+      playChord(root, type);
+      playBass(root);
+    }
+    i++;
+    if(i >= state.slots.length) i = 0;
+  }, barMs);
+}
+
+function toggleLoop(){
+  if(state.loop) stopLoop();
+  else startLoop();
+}
+
+async function startRecording(){
+  if(state.isRecording) return;
+
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    recordStatus.textContent = "このブラウザでは録音APIが使えないみたい。";
+    return;
+  }
+
+  try{
+    recordStatus.textContent = "録音中…「録音停止」で止める。";
+    state.mediaStream = await navigator.mediaDevices.getUserMedia({audio:true});
+    state.recordedChunks = [];
+    state.mediaRecorder = new MediaRecorder(state.mediaStream);
+
+    state.mediaRecorder.ondataavailable = (e)=>{
+      if(e.data && e.data.size > 0){
+        state.recordedChunks.push(e.data);
+      }
+    };
+
+    state.mediaRecorder.onstop = ()=>{
+      state.recordedBlob = new Blob(
+        state.recordedChunks,
+        { type: state.mediaRecorder.mimeType || "audio/webm" }
+      );
+
+      audioPlayer.src = URL.createObjectURL(state.recordedBlob);
+
+      if(state.mediaStream){
+        state.mediaStream.getTracks().forEach(t => t.stop());
+      }
+
+      state.mediaStream = null;
+      state.mediaRecorder = null;
+      state.isRecording = false;
+
+      recordStatus.textContent = "録音できた。必要なら「録音を保存」でダウンロード。";
+    };
+
+    state.mediaRecorder.start();
+    state.isRecording = true;
+  }catch(err){
+    state.isRecording = false;
+    recordStatus.textContent = "録音開始に失敗。Chromeのマイク許可を確認して再読み込みしてみて。";
+  }
+}
+
+function stopRecording(){
+  if(!state.mediaRecorder || !state.isRecording) return;
+  recordStatus.textContent = "停止中…";
+  state.mediaRecorder.stop();
+}
+
+function downloadRecording(){
+  if(!state.recordedBlob) return;
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(state.recordedBlob);
+  a.download = "hook-recording.webm";
+  a.click();
+}
+
+document.getElementById("addChordBtn").onclick = addChordToTimeline;
+document.getElementById("previewBtn").onclick = ()=>playChord(rootSel.value, typeSel.value);
+document.getElementById("deleteBtn").onclick = deleteChord;
+document.getElementById("addBarsBtn").onclick = addBars;
+document.getElementById("leftBtn").onclick = moveLeft;
+document.getElementById("rightBtn").onclick = moveRight;
+document.getElementById("loopBtn").onclick = toggleLoop;
+
+startRecBtn.onclick = startRecording;
+stopRecBtn.onclick = stopRecording;
+downloadRecBtn.onclick = downloadRecording;
+
+rootSel.onchange = ()=>playChord(rootSel.value, typeSel.value);
+typeSel.onchange = ()=>playChord(rootSel.value, typeSel.value);
+slashSel.onchange = ()=>playChord(rootSel.value, typeSel.value);
+
+buildSelects();
+renderTimeline();
+</script>
+</body>
+</html>
