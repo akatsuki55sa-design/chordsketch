@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ChordSketch Lite</title>
+<title>ChordSketch v3</title>
 <style>
 :root{
   --bg:#081226;
@@ -107,8 +107,8 @@ audio{
 </head>
 <body>
 <div class="app">
-  <h1>ChordSketch Lite</h1>
-  <p>まずは録音が確実に動く版。</p>
+  <h1>ChordSketch v3</h1>
+  <p>録音とコードを同時に鳴らせる版。</p>
 
   <div class="panel">
     <h2 style="margin:0 0 12px;">フック録音</h2>
@@ -143,6 +143,7 @@ audio{
       <button id="addBarsBtn" type="button">+4</button>
       <button id="loopBtn" type="button">LOOP</button>
     </div>
+    <div class="status" id="loopStatus">LOOPでコード進行を再生。録音があれば同時に流す。</div>
   </div>
 
   <div class="panel">
@@ -175,6 +176,7 @@ const timelineEl = document.getElementById("timeline");
 const bpmEl = document.getElementById("bpm");
 const audioPlayer = document.getElementById("audioPlayer");
 const recordStatus = document.getElementById("recordStatus");
+const loopStatus = document.getElementById("loopStatus");
 const startRecBtn = document.getElementById("startRecBtn");
 const stopRecBtn = document.getElementById("stopRecBtn");
 const downloadRecBtn = document.getElementById("downloadRecBtn");
@@ -184,6 +186,7 @@ const state = {
   cursor: 0,
   loop: false,
   loopTimer: null,
+  loopIndex: 0,
   audioCtx: null,
   mediaRecorder: null,
   mediaStream: null,
@@ -333,33 +336,59 @@ function moveRight(){
   renderTimeline();
 }
 
+function playCurrentLoopStep(){
+  state.cursor = state.loopIndex;
+  renderTimeline();
+
+  const chord = state.slots[state.loopIndex];
+  if(chord !== "-"){
+    const root = chord.match(/^[A-G][b#]?/)[0];
+    const type = chord.replace(root, "").split("/")[0];
+    playChord(root, type);
+    playBass(root);
+  }
+
+  state.loopIndex++;
+  if(state.loopIndex >= state.slots.length) state.loopIndex = 0;
+}
+
 function stopLoop(){
   if(state.loopTimer) clearInterval(state.loopTimer);
   state.loop = false;
   state.loopTimer = null;
+  state.loopIndex = 0;
   document.getElementById("loopBtn").textContent = "LOOP";
+  loopStatus.textContent = "LOOP停止。";
+  if(!audioPlayer.paused){
+    audioPlayer.pause();
+    audioPlayer.currentTime = 0;
+  }
   renderTimeline();
 }
 
 function startLoop(){
   const bpm = Number(bpmEl.value) || 110;
   const barMs = 60000 / bpm * 4;
-  let i = 0;
+
   state.loop = true;
+  state.loopIndex = 0;
   document.getElementById("loopBtn").textContent = "STOP LOOP";
-  state.loopTimer = setInterval(()=>{
-    state.cursor = i;
-    renderTimeline();
-    const chord = state.slots[i];
-    if(chord !== "-"){
-      const root = chord.match(/^[A-G][b#]?/)[0];
-      const type = chord.replace(root, "").split("/")[0];
-      playChord(root, type);
-      playBass(root);
+
+  if(audioPlayer.src){
+    try{
+      audioPlayer.pause();
+      audioPlayer.currentTime = 0;
+      audioPlayer.play();
+      loopStatus.textContent = "録音とコードを同時再生中。";
+    }catch(e){
+      loopStatus.textContent = "コード再生中。録音は手動再生が必要かも。";
     }
-    i++;
-    if(i >= state.slots.length) i = 0;
-  }, barMs);
+  }else{
+    loopStatus.textContent = "コード再生中。録音はまだ無し。";
+  }
+
+  playCurrentLoopStep();
+  state.loopTimer = setInterval(playCurrentLoopStep, barMs);
 }
 
 function toggleLoop(){
