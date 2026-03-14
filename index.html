@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ChordSketch v4</title>
+<title>ChordSketch v4.5</title>
 <style>
 :root{
   --bg:#081226;
@@ -107,8 +107,8 @@ audio{
 </head>
 <body>
 <div class="app">
-  <h1>ChordSketch v4</h1>
-  <p>録音・コード・クリックを同期して鳴らす版。</p>
+  <h1>ChordSketch v4.5</h1>
+  <p>録音前に1小節カウントインする版。</p>
 
   <div class="panel">
     <h2 style="margin:0 0 12px;">フック録音</h2>
@@ -136,7 +136,7 @@ audio{
       </label>
     </div>
 
-    <div class="status" id="recordStatus">「録音開始」で始めて、「録音停止」で止める。</div>
+    <div class="status" id="recordStatus">「録音開始」で1小節カウント後に録音開始。</div>
     <audio id="audioPlayer" controls></audio>
   </div>
 
@@ -195,6 +195,8 @@ const state = {
   loop: false,
   beatTimer: null,
   beatCount: 0,
+  countInTimer: null,
+  isCountIn: false,
   audioCtx: null,
   mediaRecorder: null,
   mediaStream: null,
@@ -436,7 +438,7 @@ function toggleLoop(){
 }
 
 async function startRecording(){
-  if(state.isRecording) return;
+  if(state.isRecording || state.isCountIn) return;
 
   if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
     recordStatus.textContent = "このブラウザでは録音APIが使えないみたい。";
@@ -444,45 +446,79 @@ async function startRecording(){
   }
 
   try{
-    recordStatus.textContent = "録音中…「録音停止」で止める。";
-    state.mediaStream = await navigator.mediaDevices.getUserMedia({audio:true});
-    state.recordedChunks = [];
-    state.mediaRecorder = new MediaRecorder(state.mediaStream);
+    const bpm = Number(bpmEl.value) || 110;
+    const beatMs = 60000 / bpm;
 
-    state.mediaRecorder.ondataavailable = (e)=>{
-      if(e.data && e.data.size > 0){
-        state.recordedChunks.push(e.data);
+    state.isCountIn = true;
+    recordStatus.textContent = "カウントイン中… 1小節後に録音開始";
+
+    let count = 0;
+
+    const runCountIn = async ()=>{
+      playClick(count === 0);
+      count++;
+
+      if(count >= 4){
+        clearInterval(state.countInTimer);
+        state.countInTimer = null;
+        state.isCountIn = false;
+
+        recordStatus.textContent = "録音中…「録音停止」で止める。";
+
+        state.mediaStream = await navigator.mediaDevices.getUserMedia({audio:true});
+        state.recordedChunks = [];
+        state.mediaRecorder = new MediaRecorder(state.mediaStream);
+
+        state.mediaRecorder.ondataavailable = (e)=>{
+          if(e.data && e.data.size > 0){
+            state.recordedChunks.push(e.data);
+          }
+        };
+
+        state.mediaRecorder.onstop = ()=>{
+          state.recordedBlob = new Blob(
+            state.recordedChunks,
+            { type: state.mediaRecorder.mimeType || "audio/webm" }
+          );
+
+          audioPlayer.src = URL.createObjectURL(state.recordedBlob);
+
+          if(state.mediaStream){
+            state.mediaStream.getTracks().forEach(t => t.stop());
+          }
+
+          state.mediaStream = null;
+          state.mediaRecorder = null;
+          state.isRecording = false;
+
+          recordStatus.textContent = "録音できた。必要なら「録音を保存」でダウンロード。";
+        };
+
+        state.mediaRecorder.start();
+        state.isRecording = true;
       }
     };
 
-    state.mediaRecorder.onstop = ()=>{
-      state.recordedBlob = new Blob(
-        state.recordedChunks,
-        { type: state.mediaRecorder.mimeType || "audio/webm" }
-      );
+    runCountIn();
+    state.countInTimer = setInterval(runCountIn, beatMs);
 
-      audioPlayer.src = URL.createObjectURL(state.recordedBlob);
-
-      if(state.mediaStream){
-        state.mediaStream.getTracks().forEach(t => t.stop());
-      }
-
-      state.mediaStream = null;
-      state.mediaRecorder = null;
-      state.isRecording = false;
-
-      recordStatus.textContent = "録音できた。必要なら「録音を保存」でダウンロード。";
-    };
-
-    state.mediaRecorder.start();
-    state.isRecording = true;
   }catch(err){
-    state.isRecording = false;
+    state.isCountIn = false;
+    if(state.countInTimer) clearInterval(state.countInTimer);
+    state.countInTimer = null;
     recordStatus.textContent = "録音開始に失敗。Chromeのマイク許可を確認して再読み込みしてみて。";
   }
 }
 
 function stopRecording(){
+  if(state.isCountIn){
+    state.isCountIn = false;
+    if(state.countInTimer) clearInterval(state.countInTimer);
+    state.countInTimer = null;
+    recordStatus.textContent = "カウントインを停止した。";
+    return;
+  }
+
   if(!state.mediaRecorder || !state.isRecording) return;
   recordStatus.textContent = "停止中…";
   state.mediaRecorder.stop();
