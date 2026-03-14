@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ChordSketch v4.5</title>
+<title>ChordSketch v4.6</title>
 <style>
 :root{
   --bg:#081226;
@@ -107,8 +107,8 @@ audio{
 </head>
 <body>
 <div class="app">
-  <h1>ChordSketch v4.5</h1>
-  <p>録音前に1小節カウントインする版。</p>
+  <h1>ChordSketch v4.6</h1>
+  <p>カウントインのクリックが確実に鳴るようにした版。</p>
 
   <div class="panel">
     <h2 style="margin:0 0 12px;">フック録音</h2>
@@ -255,12 +255,12 @@ function currentChordName(){
   return root + type + (slash ? "/" + slash : "");
 }
 
-function ensureAudio(){
+async function ensureAudio(){
   if(!state.audioCtx){
     state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   }
   if(state.audioCtx.state === "suspended"){
-    state.audioCtx.resume();
+    await state.audioCtx.resume();
   }
 }
 
@@ -270,8 +270,9 @@ function noteFreq(note){
   return 440 * Math.pow(2, (midi - 69) / 12);
 }
 
-function playChord(root, type){
-  ensureAudio();
+async function playChord(root, type){
+  await ensureAudio();
+
   let intervals = [0,4,7];
   if(type === "m") intervals = [0,3,7];
   if(type === "7") intervals = [0,4,7,10];
@@ -298,11 +299,13 @@ function playChord(root, type){
   });
 }
 
-function playBass(root){
-  ensureAudio();
+async function playBass(root){
+  await ensureAudio();
+
   const map = {C:0,"C#":1,Db:1,D:2,"D#":3,Eb:3,E:4,F:5,"F#":6,Gb:6,G:7,"G#":8,Ab:8,A:9,"A#":10,Bb:10,B:11};
   const midi = 36 + map[root];
   const freq = 440 * Math.pow(2, (midi - 69) / 12);
+
   const osc = state.audioCtx.createOscillator();
   const gain = state.audioCtx.createGain();
   osc.type = "sawtooth";
@@ -315,9 +318,10 @@ function playBass(root){
   osc.stop(state.audioCtx.currentTime + 1.2);
 }
 
-function playClick(isDownbeat){
+async function playClick(isDownbeat){
   if(!clickToggle.checked) return;
-  ensureAudio();
+
+  await ensureAudio();
 
   const osc = state.audioCtx.createOscillator();
   const gain = state.audioCtx.createGain();
@@ -335,13 +339,13 @@ function playClick(isDownbeat){
   osc.stop(state.audioCtx.currentTime + 0.05);
 }
 
-function addChordToTimeline(){
+async function addChordToTimeline(){
   const chord = currentChordName();
   state.slots[state.cursor] = chord;
   const root = chord.match(/^[A-G][b#]?/)[0];
   const type = chord.replace(root, "").split("/")[0];
-  playChord(root, type);
-  playBass(root);
+  await playChord(root, type);
+  await playBass(root);
   if(state.cursor < state.slots.length - 1) state.cursor++;
   renderTimeline();
 }
@@ -366,7 +370,7 @@ function moveRight(){
   renderTimeline();
 }
 
-function playCurrentBar(){
+async function playCurrentBar(){
   const barIndex = Math.floor(state.beatCount / 4) % state.slots.length;
   state.cursor = barIndex;
   renderTimeline();
@@ -375,8 +379,8 @@ function playCurrentBar(){
   if(chord !== "-"){
     const root = chord.match(/^[A-G][b#]?/)[0];
     const type = chord.replace(root, "").split("/")[0];
-    playChord(root, type);
-    playBass(root);
+    await playChord(root, type);
+    await playBass(root);
   }
 }
 
@@ -398,6 +402,8 @@ async function startLoop(){
   const bpm = Number(bpmEl.value) || 110;
   const beatMs = 60000 / bpm;
 
+  await ensureAudio();
+
   state.loop = true;
   state.beatCount = 0;
   document.getElementById("loopBtn").textContent = "STOP LOOP";
@@ -415,21 +421,23 @@ async function startLoop(){
     loopStatus.textContent = "コード + クリック再生中。録音はまだ無し。";
   }
 
-  const tick = ()=>{
+  const tick = async ()=>{
     const beatInBar = state.beatCount % 4;
     const isDownbeat = beatInBar === 0;
 
-    playClick(isDownbeat);
+    await playClick(isDownbeat);
 
     if(isDownbeat){
-      playCurrentBar();
+      await playCurrentBar();
     }
 
     state.beatCount++;
   };
 
-  tick();
-  state.beatTimer = setInterval(tick, beatMs);
+  await tick();
+  state.beatTimer = setInterval(()=>{
+    tick();
+  }, beatMs);
 }
 
 function toggleLoop(){
@@ -449,13 +457,15 @@ async function startRecording(){
     const bpm = Number(bpmEl.value) || 110;
     const beatMs = 60000 / bpm;
 
+    await ensureAudio();
+
     state.isCountIn = true;
     recordStatus.textContent = "カウントイン中… 1小節後に録音開始";
 
     let count = 0;
 
     const runCountIn = async ()=>{
-      playClick(count === 0);
+      await playClick(count === 0);
       count++;
 
       if(count >= 4){
@@ -499,8 +509,10 @@ async function startRecording(){
       }
     };
 
-    runCountIn();
-    state.countInTimer = setInterval(runCountIn, beatMs);
+    await runCountIn();
+    state.countInTimer = setInterval(()=>{
+      runCountIn();
+    }, beatMs);
 
   }catch(err){
     state.isCountIn = false;
@@ -532,8 +544,12 @@ function downloadRecording(){
   a.click();
 }
 
-document.getElementById("addChordBtn").onclick = addChordToTimeline;
-document.getElementById("previewBtn").onclick = ()=>playChord(rootSel.value, typeSel.value);
+document.getElementById("addChordBtn").onclick = ()=>{
+  addChordToTimeline();
+};
+document.getElementById("previewBtn").onclick = ()=>{
+  playChord(rootSel.value, typeSel.value);
+};
 document.getElementById("deleteBtn").onclick = deleteChord;
 document.getElementById("addBarsBtn").onclick = addBars;
 document.getElementById("leftBtn").onclick = moveLeft;
@@ -544,9 +560,15 @@ startRecBtn.onclick = startRecording;
 stopRecBtn.onclick = stopRecording;
 downloadRecBtn.onclick = downloadRecording;
 
-rootSel.onchange = ()=>playChord(rootSel.value, typeSel.value);
-typeSel.onchange = ()=>playChord(rootSel.value, typeSel.value);
-slashSel.onchange = ()=>playChord(rootSel.value, typeSel.value);
+rootSel.onchange = ()=>{
+  playChord(rootSel.value, typeSel.value);
+};
+typeSel.onchange = ()=>{
+  playChord(rootSel.value, typeSel.value);
+};
+slashSel.onchange = ()=>{
+  playChord(rootSel.value, typeSel.value);
+};
 
 buildSelects();
 renderTimeline();
