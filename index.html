@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ChordSketch v6.1</title>
+<title>HookPad v6.2</title>
 <style>
 :root{
   --bg:#081226;
@@ -62,10 +62,6 @@ button{
 }
 button:active{
   transform:scale(.99);
-}
-button.ok{
-  background:#194734;
-  border-color:#2c9f73;
 }
 input,select,textarea{
   width:100%;
@@ -205,8 +201,8 @@ audio{
 </head>
 <body>
 <div class="app">
-  <h1>ChordSketch v6.1</h1>
-  <p>録音後の波形とトリム位置を見える化した版。</p>
+  <h1>HookPad v6.2</h1>
+  <p>ループの基準時刻を1本化して、コード・録音・拍表示の同期を詰めた版。</p>
 
   <div class="panel">
     <h2 style="margin:0 0 12px;">フック録音</h2>
@@ -289,7 +285,7 @@ audio{
       <button id="addBarsBtn" type="button">+4</button>
       <button id="loopBtn" type="button">LOOP</button>
     </div>
-    <div class="status" id="loopStatus">コードを基準に同期。ズレたら録音・コードのオフセットを少しずつ調整。</div>
+    <div class="status" id="loopStatus">コードを基準に同期。コード再生オフセットは小さい値で詰める想定。</div>
   </div>
 
   <div class="panel">
@@ -366,7 +362,10 @@ const state = {
   playingBarIndex: -1,
 
   waveformData: null,
-  waveformDuration: 0
+  waveformDuration: 0,
+
+  loopStartTime: 0,
+  loopRafId: null
 };
 
 function buildSelects(){
@@ -673,10 +672,58 @@ function clearPendingAudioTimeouts(){
   }
 }
 
+function clearLoopRaf(){
+  if(state.loopRafId){
+    cancelAnimationFrame(state.loopRafId);
+    state.loopRafId = null;
+  }
+}
+
 function effectiveAudioStart(){
   const autoTrim = Number(autoTrimEl.value) || 0;
   const audioOffset = Number(audioOffsetEl.value) || 0;
   return Math.max(0, autoTrim + audioOffset);
+}
+
+function scheduleLoopVisualsAndChords(startTime, chordOffsetSec){
+  const beatSec = metroSecondsPerBeat();
+  const barSec = beatSec * 4;
+  const totalBars = state.slots.length;
+
+  function tick(){
+    if(state.mode !== "loop" || !state.audioCtx){
+      clearLoopRaf();
+      return;
+    }
+
+    const now = state.audioCtx.currentTime;
+    const elapsed = now - startTime;
+
+    if(elapsed >= 0){
+      const beatInBar = Math.floor(elapsed / beatSec) % 4;
+      setBeatVisual(beatInBar);
+
+      const barIndex = Math.floor(elapsed / barSec) % totalBars;
+
+      if(barIndex !== state.playingBarIndex){
+        state.playingBarIndex = barIndex;
+        state.cursor = barIndex;
+        renderTimeline();
+
+        const playAt = Math.max(0, chordOffsetSec * 1000);
+        const t = setTimeout(()=>{
+          if(state.mode !== "loop") return;
+          playBarByIndex(barIndex);
+        }, playAt);
+
+        state.pendingChordTimeouts.push(t);
+      }
+    }
+
+    state.loopRafId = requestAnimationFrame(tick);
+  }
+
+  tick();
 }
 
 function stopLoop(){
@@ -687,9 +734,12 @@ function stopLoop(){
 
   clearPendingChordTimeouts();
   clearPendingAudioTimeouts();
+  clearLoopRaf();
 
   state.mode = "idle";
   state.playingBarIndex = -1;
+  state.loopStartTime = 0;
+
   loopBtn.textContent = "LOOP";
   loopStatus.textContent = "LOOP停止。";
 
@@ -706,27 +756,28 @@ async function startLoop(){
   stopLoop();
 
   state.mode = "loop";
-  state.barIndex = 0;
   loopBtn.textContent = "STOP LOOP";
 
   await ensureAudio();
 
-  const beat = metroSecondsPerBeat();
-  const barMs = beat * 4 * 1000;
   const chordOffset = Number(chordOffsetEl.value) || 0;
   const audioStart = effectiveAudioStart();
 
-  const firstChordTimeout = setTimeout(()=>{
-    if(state.mode !== "loop") return;
-    state.barIndex = 0;
-    state.cursor = 0;
-    playBarByIndex(0);
-    setBeatVisual(0);
-  }, Math.max(0, chordOffset * 1000));
-  state.pendingChordTimeouts.push(firstChordTimeout);
+  const startTime = state.audioCtx.currentTime + 0.18;
+  state.loopStartTime = startTime;
+
+  if(clickToggle.checked){
+    const beatSec = metroSecondsPerBeat();
+    for(let i = 0; i < 16; i++){
+      const t = startTime + (i * beatSec);
+      scheduleClick(t, i % 4 === 0);
+    }
+  }
 
   if(audioPlayer.src){
-    const firstAudioTimeout = setTimeout(async ()=>{
+    const delayMs = Math.max(0, (startTime - state.audioCtx.currentTime) * 1000);
+
+    const audioTimer = setTimeout(async ()=>{
       if(state.mode !== "loop") return;
       try{
         audioPlayer.pause();
@@ -736,24 +787,14 @@ async function startLoop(){
       }catch(e){
         loopStatus.textContent = "コード再生中。録音は手動再生が必要かも。";
       }
-    }, Math.max(0, chordOffset * 1000));
-    state.pendingAudioTimeouts.push(firstAudioTimeout);
+    }, delayMs);
+
+    state.pendingAudioTimeouts.push(audioTimer);
   }else{
     loopStatus.textContent = "コード再生中。録音はまだ無し。";
   }
 
-  state.loopBarTimer = setInterval(()=>{
-    state.barIndex = (state.barIndex + 1) % state.slots.length;
-
-    const t = setTimeout(()=>{
-      if(state.mode !== "loop") return;
-      state.cursor = state.barIndex;
-      playBarByIndex(state.barIndex);
-      setBeatVisual(0);
-    }, Math.max(0, chordOffset * 1000));
-
-    state.pendingChordTimeouts.push(t);
-  }, barMs);
+  scheduleLoopVisualsAndChords(startTime, chordOffset);
 }
 
 function toggleLoop(){
@@ -796,7 +837,6 @@ function drawWaveform(){
   ctx.fillStyle = "#0d1730";
   ctx.fillRect(0,0,w,h);
 
-  // center line
   ctx.strokeStyle = "#243656";
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -833,7 +873,6 @@ function drawWaveform(){
   const trimX = Math.min(w, (trimSec / state.waveformDuration) * w);
   const effectiveX = Math.min(w, (effectiveSec / state.waveformDuration) * w);
 
-  // trim line
   ctx.strokeStyle = "#ffc857";
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -841,7 +880,6 @@ function drawWaveform(){
   ctx.lineTo(trimX, h);
   ctx.stroke();
 
-  // effective playback line
   ctx.strokeStyle = "#38d39f";
   ctx.lineWidth = 2;
   ctx.beginPath();
