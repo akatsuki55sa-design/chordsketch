@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ChordSketch v5.5</title>
+<title>ChordSketch v5.6</title>
 <style>
 :root{
   --bg:#081226;
@@ -112,14 +112,15 @@ audio{
 </head>
 <body>
 <div class="app">
-  <h1>ChordSketch v5.5</h1>
-  <p>4カウント予約再生 + 録音オフセット補正版。</p>
+  <h1>ChordSketch v5.6</h1>
+  <p>専用カウントをやめて、メトロノームを聞きながらそのまま録音する実用版。</p>
 
   <div class="panel">
     <h2 style="margin:0 0 12px;">フック録音</h2>
 
     <div class="row">
       <button id="warmupBtn" type="button">ウォームアップ</button>
+      <button id="metroBtn" type="button">メトロノーム開始</button>
       <button id="startRecBtn" type="button">録音開始</button>
       <button id="stopRecBtn" type="button">録音停止</button>
       <button id="downloadRecBtn" type="button">録音を保存</button>
@@ -139,17 +140,22 @@ audio{
     <div class="grid2" style="margin-top:12px;">
       <div>
         <label>録音再生オフセット（秒）</label>
-        <input id="audioOffset" type="number" value="0.12" step="0.01">
+        <input id="audioOffset" type="number" value="0.00" step="0.01">
       </div>
       <div>
-        <label>
-          <input id="clickToggle" type="checkbox" checked style="width:auto;margin-right:8px;">
-          クリック音を鳴らす
-        </label>
+        <label>コード再生オフセット（秒）</label>
+        <input id="chordOffset" type="number" value="0.12" step="0.01">
       </div>
     </div>
 
-    <div class="status" id="recordStatus">最初にウォームアップ推奨。録音前4カウントあり。</div>
+    <div style="margin-top:12px;">
+      <label>
+        <input id="clickToggle" type="checkbox" checked style="width:auto;margin-right:8px;">
+        クリック音を鳴らす
+      </label>
+    </div>
+
+    <div class="status" id="recordStatus">ウォームアップ → メトロノーム開始 → 自分で数えて録音開始、が安定。</div>
     <audio id="audioPlayer" controls></audio>
   </div>
 
@@ -163,7 +169,7 @@ audio{
       <button id="addBarsBtn" type="button">+4</button>
       <button id="loopBtn" type="button">LOOP</button>
     </div>
-    <div class="status" id="loopStatus">録音が遅れて聞こえる時はオフセット値を少し上げる。</div>
+    <div class="status" id="loopStatus">コードが早い時はコード再生オフセットを少し上げる。</div>
   </div>
 
   <div class="panel">
@@ -202,7 +208,10 @@ const stopRecBtn = document.getElementById("stopRecBtn");
 const downloadRecBtn = document.getElementById("downloadRecBtn");
 const clickToggle = document.getElementById("clickToggle");
 const warmupBtn = document.getElementById("warmupBtn");
+const metroBtn = document.getElementById("metroBtn");
 const audioOffsetEl = document.getElementById("audioOffset");
+const chordOffsetEl = document.getElementById("chordOffset");
+const loopBtn = document.getElementById("loopBtn");
 
 const state = {
   slots: ["-","-","-","-"],
@@ -214,16 +223,18 @@ const state = {
   recordedChunks: [],
   recordedBlob: null,
 
-  mode: "idle", // idle, countin-record, recording, loop
-  barIndex: 0,
+  warmedUp: false,
+  mode: "idle", // idle, recording, loop
 
   metroTimerId: null,
   metroLookahead: 25.0,
   metroScheduleAheadTime: 0.12,
   metroNextNoteTime: 0.0,
   metroBeatNumber: 0,
+  metronomeOn: false,
 
-  warmedUp: false
+  loopBarTimer: null,
+  barIndex: 0
 };
 
 function buildSelects(){
@@ -378,12 +389,39 @@ function scheduleClick(time, isDownbeat){
   osc.stop(time + 0.04);
 }
 
-function scheduleCountIn(startTime){
-  const beat = metroSecondsPerBeat();
-  for(let i = 0; i < 4; i++){
-    scheduleClick(startTime + (beat * i), i === 0);
+function metroScheduler(){
+  while(state.metroNextNoteTime < state.audioCtx.currentTime + state.metroScheduleAheadTime){
+    const beatNumber = state.metroBeatNumber;
+    const beatInBar = beatNumber % 4;
+    scheduleClick(state.metroNextNoteTime, beatInBar === 0);
+    state.metroNextNoteTime += metroSecondsPerBeat();
+    state.metroBeatNumber++;
   }
-  return startTime + (beat * 4);
+}
+
+async function startMetronome(){
+  await ensureAudio();
+  stopMetronome();
+
+  state.metroBeatNumber = 0;
+  state.metroNextNoteTime = state.audioCtx.currentTime + 0.08;
+  state.metroTimerId = setInterval(metroScheduler, state.metroLookahead);
+  state.metronomeOn = true;
+  metroBtn.textContent = "メトロノーム停止";
+}
+
+function stopMetronome(){
+  if(state.metroTimerId){
+    clearInterval(state.metroTimerId);
+    state.metroTimerId = null;
+  }
+  state.metronomeOn = false;
+  metroBtn.textContent = "メトロノーム開始";
+}
+
+async function toggleMetronome(){
+  if(state.metronomeOn) stopMetronome();
+  else await startMetronome();
 }
 
 async function warmupAudioAndMic(){
@@ -393,9 +431,7 @@ async function warmupAudioAndMic(){
   }
 
   try{
-    state.mode = "warming";
     recordStatus.textContent = "ウォームアップ中…";
-
     await ensureAudio();
 
     const osc = state.audioCtx.createOscillator();
@@ -410,10 +446,8 @@ async function warmupAudioAndMic(){
     stream.getTracks().forEach(t => t.stop());
 
     state.warmedUp = true;
-    state.mode = "idle";
     recordStatus.textContent = "ウォームアップ完了。";
   }catch(e){
-    state.mode = "idle";
     recordStatus.textContent = "ウォームアップ失敗。マイク許可を確認してみて。";
   }
 }
@@ -465,13 +499,13 @@ async function playBarByIndex(barIndex){
 }
 
 function stopLoop(){
-  if(state.metroTimerId){
-    clearInterval(state.metroTimerId);
-    state.metroTimerId = null;
+  if(state.loopBarTimer){
+    clearInterval(state.loopBarTimer);
+    state.loopBarTimer = null;
   }
 
   state.mode = "idle";
-  document.getElementById("loopBtn").textContent = "LOOP";
+  loopBtn.textContent = "LOOP";
   loopStatus.textContent = "LOOP停止。";
 
   if(!audioPlayer.paused){
@@ -485,36 +519,30 @@ function stopLoop(){
 async function startLoop(){
   state.mode = "loop";
   state.barIndex = 0;
-  document.getElementById("loopBtn").textContent = "STOP LOOP";
+  loopBtn.textContent = "STOP LOOP";
 
   await ensureAudio();
 
   const beat = metroSecondsPerBeat();
   const barMs = beat * 4 * 1000;
-  const now = state.audioCtx.currentTime;
-  const startAt = now + 0.12;
+  const chordOffset = Number(chordOffsetEl.value) || 0;
   const audioOffset = Number(audioOffsetEl.value) || 0;
-
-  if(clickToggle.checked){
-    for(let i = 0; i < 16; i++){
-      const beatInBar = i % 4;
-      scheduleClick(startAt + (beat * i), beatInBar === 0);
-    }
-  }
 
   if(audioPlayer.src){
     try{
       audioPlayer.pause();
       audioPlayer.currentTime = Math.max(0, audioOffset);
-      setTimeout(()=>{
-        audioPlayer.play().catch(()=>{});
-      }, 120);
-      loopStatus.textContent = "録音 + コード + クリック同期再生中。";
+      await audioPlayer.play();
+      loopStatus.textContent = "録音 + コード同期再生中。ズレたら2つのオフセットを微調整。";
     }catch(e){
-      loopStatus.textContent = "コード + クリック再生中。録音は手動再生が必要かも。";
+      loopStatus.textContent = "コード再生中。録音は手動再生が必要かも。";
     }
   }else{
-    loopStatus.textContent = "コード + クリック再生中。録音はまだ無し。";
+    loopStatus.textContent = "コード再生中。録音はまだ無し。";
+  }
+
+  if(state.metronomeOn){
+    // メトロノームはそのまま使う
   }
 
   setTimeout(()=>{
@@ -522,13 +550,15 @@ async function startLoop(){
     state.cursor = 0;
     renderTimeline();
     playBarByIndex(0);
-  }, 120);
+  }, Math.max(0, chordOffset * 1000));
 
-  state.metroTimerId = setInterval(()=>{
+  state.loopBarTimer = setInterval(()=>{
     state.barIndex = (state.barIndex + 1) % state.slots.length;
-    state.cursor = state.barIndex;
-    renderTimeline();
-    playBarByIndex(state.barIndex);
+    setTimeout(()=>{
+      state.cursor = state.barIndex;
+      renderTimeline();
+      playBarByIndex(state.barIndex);
+    }, Math.max(0, chordOffset * 1000));
   }, barMs);
 }
 
@@ -538,7 +568,7 @@ function toggleLoop(){
 }
 
 async function startRecording(){
-  if(state.mode === "recording" || state.mode === "countin-record") return;
+  if(state.mode === "recording") return;
 
   if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
     recordStatus.textContent = "このブラウザでは録音APIが使えないみたい。";
@@ -548,7 +578,7 @@ async function startRecording(){
   try{
     await ensureAudio();
 
-    recordStatus.textContent = "マイク準備中…";
+    recordStatus.textContent = "録音開始中…";
     state.mediaStream = await navigator.mediaDevices.getUserMedia({audio:true});
 
     state.recordedChunks = [];
@@ -579,20 +609,9 @@ async function startRecording(){
       recordStatus.textContent = "録音できた。必要なら「録音を保存」でダウンロード。";
     };
 
-    state.mode = "countin-record";
-    recordStatus.textContent = "カウントイン中… 4カウント後に録音開始";
-
-    const startAt = state.audioCtx.currentTime + 0.12;
-    const recStartAt = scheduleCountIn(startAt);
-
-    const waitMs = Math.max(0, (recStartAt - state.audioCtx.currentTime) * 1000);
-
-    setTimeout(()=>{
-      if(state.mode !== "countin-record" || !state.mediaRecorder) return;
-      state.mediaRecorder.start();
-      state.mode = "recording";
-      recordStatus.textContent = "録音中…「録音停止」で止める。";
-    }, waitMs);
+    state.mediaRecorder.start();
+    state.mode = "recording";
+    recordStatus.textContent = "録音中…「録音停止」で止める。";
 
   }catch(err){
     state.mode = "idle";
@@ -608,21 +627,7 @@ async function startRecording(){
 }
 
 function stopRecording(){
-  if(state.mode === "countin-record"){
-    state.mode = "idle";
-
-    if(state.mediaStream){
-      state.mediaStream.getTracks().forEach(t => t.stop());
-      state.mediaStream = null;
-    }
-
-    state.mediaRecorder = null;
-    recordStatus.textContent = "カウントインを停止した。";
-    return;
-  }
-
   if(state.mode !== "recording" || !state.mediaRecorder) return;
-
   recordStatus.textContent = "停止中…";
   state.mediaRecorder.stop();
 }
@@ -645,6 +650,7 @@ document.getElementById("rightBtn").onclick = moveRight;
 document.getElementById("loopBtn").onclick = toggleLoop;
 
 warmupBtn.onclick = warmupAudioAndMic;
+metroBtn.onclick = toggleMetronome;
 startRecBtn.onclick = startRecording;
 stopRecBtn.onclick = stopRecording;
 downloadRecBtn.onclick = downloadRecording;
