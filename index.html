@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ChordSketch v5.8</title>
+<title>ChordSketch v5.9</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
 :root{
   --bg:#081226;
@@ -12,6 +13,8 @@
   --line:#31435f;
   --text:#e8eefc;
   --muted:#9fb0d1;
+  --accent:#3bb7ff;
+  --accent2:#8dd7ff;
 }
 *{box-sizing:border-box}
 body{
@@ -83,6 +86,16 @@ textarea{
   border:1px solid var(--line);
   background:#182640;
   text-align:center;
+  transition:.12s ease;
+}
+.slot.active{
+  outline:2px solid var(--accent);
+  box-shadow:0 0 0 2px rgba(59,183,255,.15) inset;
+}
+.slot.playing{
+  background:#213558;
+  border-color:var(--accent);
+  box-shadow:0 0 18px rgba(59,183,255,.22);
 }
 .status{
   margin-top:10px;
@@ -110,19 +123,45 @@ audio{
   grid-template-columns:repeat(3,minmax(0,1fr));
   gap:10px;
 }
-@media (max-width:640px){
-  .grid,.grid2,.grid3{grid-template-columns:1fr}
+.beatBox{
+  display:flex;
+  gap:8px;
+  margin-top:12px;
+}
+.beat{
+  flex:1;
+  text-align:center;
+  padding:12px 0;
+  border-radius:12px;
+  border:1px solid var(--line);
+  background:#182640;
+  color:var(--muted);
+  font-weight:700;
+  transition:.08s ease;
+}
+.beat.on{
+  background:var(--accent);
+  color:#081226;
+  border-color:var(--accent2);
+  box-shadow:0 0 18px rgba(59,183,255,.30);
+}
+.beat.down{
+  background:#8dd7ff;
+  color:#081226;
 }
 .small{
   font-size:.9rem;
   color:var(--muted);
 }
+@media (max-width:640px){
+  .grid,.grid2,.grid3{grid-template-columns:1fr}
+}
 </style>
 </head>
 <body>
 <div class="app">
-  <h1>ChordSketch v5.8</h1>
-  <p>LOOPの基準をコード側に寄せて、録音をその後から再生する版。</p>
+  <h1>ChordSketch v5.9</h1>
+  <p>拍表示と再生中小節ハイライトを追加した版。</p>
 
   <div class="panel">
     <h2 style="margin:0 0 12px;">フック録音</h2>
@@ -149,7 +188,7 @@ audio{
     <div class="grid3" style="margin-top:12px;">
       <div>
         <label>自動トリム（秒）</label>
-        <input id="autoTrim" type="number" value="0.10" step="0.01">
+        <input id="autoTrim" type="number" value="0.90" step="0.01">
       </div>
       <div>
         <label>録音再生オフセット（秒）</label>
@@ -157,7 +196,7 @@ audio{
       </div>
       <div>
         <label>コード再生オフセット（秒）</label>
-        <input id="chordOffset" type="number" value="0.12" step="0.01">
+        <input id="chordOffset" type="number" value="0.00" step="0.01">
       </div>
     </div>
 
@@ -166,6 +205,13 @@ audio{
         <input id="clickToggle" type="checkbox" checked style="width:auto;margin-right:8px;">
         クリック音を鳴らす
       </label>
+    </div>
+
+    <div class="beatBox" id="beatBox">
+      <div class="beat" data-beat="0">1</div>
+      <div class="beat" data-beat="1">2</div>
+      <div class="beat" data-beat="2">3</div>
+      <div class="beat" data-beat="3">4</div>
     </div>
 
     <div class="status" id="recordStatus">ウォームアップ → メトロノーム開始 → 自分で数えて録音開始。</div>
@@ -185,7 +231,7 @@ audio{
       <button id="addBarsBtn" type="button">+4</button>
       <button id="loopBtn" type="button">LOOP</button>
     </div>
-    <div class="status" id="loopStatus">コードを基準に同期。ズレたら録音・コードのオフセットを少しずつ調整。</div>
+    <div class="status" id="loopStatus">再生中の小節が光る。コードを基準に同期。</div>
   </div>
 
   <div class="panel">
@@ -229,6 +275,7 @@ const audioOffsetEl = document.getElementById("audioOffset");
 const chordOffsetEl = document.getElementById("chordOffset");
 const autoTrimEl = document.getElementById("autoTrim");
 const loopBtn = document.getElementById("loopBtn");
+const beatEls = [...document.querySelectorAll(".beat")];
 
 const state = {
   slots: ["-","-","-","-"],
@@ -253,7 +300,10 @@ const state = {
   loopBarTimer: null,
   barIndex: 0,
   pendingChordTimeouts: [],
-  pendingAudioTimeouts: []
+  pendingAudioTimeouts: [],
+
+  currentBeatVisual: -1,
+  playingBarIndex: -1
 };
 
 function buildSelects(){
@@ -289,16 +339,31 @@ function renderTimeline(){
     const div = document.createElement("button");
     div.type = "button";
     div.className = "slot";
+    if(i === state.cursor) div.classList.add("active");
+    if(i === state.playingBarIndex) div.classList.add("playing");
     div.textContent = chord + " / " + (i + 1) + "小節目";
-    if(i === state.cursor){
-      div.style.outline = "2px solid #3bb7ff";
-    }
     div.onclick = ()=>{
       state.cursor = i;
       renderTimeline();
     };
     timelineEl.appendChild(div);
   });
+}
+
+function setBeatVisual(beatInBar){
+  state.currentBeatVisual = beatInBar;
+  beatEls.forEach((el, i)=>{
+    el.classList.remove("on","down");
+    if(i === beatInBar){
+      el.classList.add("on");
+      if(i === 0) el.classList.add("down");
+    }
+  });
+}
+
+function clearBeatVisual(){
+  state.currentBeatVisual = -1;
+  beatEls.forEach(el=>el.classList.remove("on","down"));
 }
 
 function currentChordName(){
@@ -412,7 +477,17 @@ function metroScheduler(){
   while(state.metroNextNoteTime < state.audioCtx.currentTime + state.metroScheduleAheadTime){
     const beatNumber = state.metroBeatNumber;
     const beatInBar = beatNumber % 4;
+
     scheduleClick(state.metroNextNoteTime, beatInBar === 0);
+
+    const visualDelay = Math.max(0, (state.metroNextNoteTime - state.audioCtx.currentTime) * 1000);
+    const t = setTimeout(()=>{
+      if(state.metronomeOn || state.mode === "loop"){
+        setBeatVisual(beatInBar);
+      }
+    }, visualDelay);
+    state.pendingAudioTimeouts.push(t);
+
     state.metroNextNoteTime += metroSecondsPerBeat();
     state.metroBeatNumber++;
   }
@@ -436,6 +511,7 @@ function stopMetronome(){
   }
   state.metronomeOn = false;
   metroBtn.textContent = "メトロノーム開始";
+  if(state.mode !== "loop") clearBeatVisual();
 }
 
 async function toggleMetronome(){
@@ -508,6 +584,9 @@ function moveRight(){
 }
 
 async function playBarByIndex(barIndex){
+  state.playingBarIndex = barIndex;
+  renderTimeline();
+
   const chord = state.slots[barIndex];
   if(chord !== "-"){
     const root = chord.match(/^[A-G][b#]?/)[0];
@@ -547,6 +626,7 @@ function stopLoop(){
   clearPendingAudioTimeouts();
 
   state.mode = "idle";
+  state.playingBarIndex = -1;
   loopBtn.textContent = "LOOP";
   loopStatus.textContent = "LOOP停止。";
 
@@ -555,6 +635,7 @@ function stopLoop(){
     audioPlayer.currentTime = 0;
   }
 
+  if(!state.metronomeOn) clearBeatVisual();
   renderTimeline();
 }
 
@@ -572,17 +653,15 @@ async function startLoop(){
   const chordOffset = Number(chordOffsetEl.value) || 0;
   const audioStart = effectiveAudioStart();
 
-  // 先にコードを基準として鳴らす
   const firstChordTimeout = setTimeout(()=>{
     if(state.mode !== "loop") return;
     state.barIndex = 0;
     state.cursor = 0;
-    renderTimeline();
     playBarByIndex(0);
+    setBeatVisual(0);
   }, Math.max(0, chordOffset * 1000));
   state.pendingChordTimeouts.push(firstChordTimeout);
 
-  // その後で録音を再生
   if(audioPlayer.src){
     const firstAudioTimeout = setTimeout(async ()=>{
       if(state.mode !== "loop") return;
@@ -606,8 +685,8 @@ async function startLoop(){
     const t = setTimeout(()=>{
       if(state.mode !== "loop") return;
       state.cursor = state.barIndex;
-      renderTimeline();
       playBarByIndex(state.barIndex);
+      setBeatVisual(0);
     }, Math.max(0, chordOffset * 1000));
 
     state.pendingChordTimeouts.push(t);
