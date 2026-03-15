@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ChordSketch v5.6</title>
+<title>ChordSketch v5.6.1</title>
 <style>
 :root{
   --bg:#081226;
@@ -112,8 +112,8 @@ audio{
 </head>
 <body>
 <div class="app">
-  <h1>ChordSketch v5.6</h1>
-  <p>専用カウントをやめて、メトロノームを聞きながらそのまま録音する実用版。</p>
+  <h1>ChordSketch v5.6.1</h1>
+  <p>LOOP停止時に予約済みコード再生もきちんと止める版。</p>
 
   <div class="panel">
     <h2 style="margin:0 0 12px;">フック録音</h2>
@@ -234,7 +234,8 @@ const state = {
   metronomeOn: false,
 
   loopBarTimer: null,
-  barIndex: 0
+  barIndex: 0,
+  pendingChordTimeouts: []
 };
 
 function buildSelects(){
@@ -498,11 +499,20 @@ async function playBarByIndex(barIndex){
   }
 }
 
+function clearPendingChordTimeouts(){
+  if(state.pendingChordTimeouts.length){
+    state.pendingChordTimeouts.forEach(id => clearTimeout(id));
+    state.pendingChordTimeouts = [];
+  }
+}
+
 function stopLoop(){
   if(state.loopBarTimer){
     clearInterval(state.loopBarTimer);
     state.loopBarTimer = null;
   }
+
+  clearPendingChordTimeouts();
 
   state.mode = "idle";
   loopBtn.textContent = "LOOP";
@@ -517,6 +527,8 @@ function stopLoop(){
 }
 
 async function startLoop(){
+  stopLoop();
+
   state.mode = "loop";
   state.barIndex = 0;
   loopBtn.textContent = "STOP LOOP";
@@ -541,24 +553,26 @@ async function startLoop(){
     loopStatus.textContent = "コード再生中。録音はまだ無し。";
   }
 
-  if(state.metronomeOn){
-    // メトロノームはそのまま使う
-  }
-
-  setTimeout(()=>{
+  const firstTimeout = setTimeout(()=>{
+    if(state.mode !== "loop") return;
     state.barIndex = 0;
     state.cursor = 0;
     renderTimeline();
     playBarByIndex(0);
   }, Math.max(0, chordOffset * 1000));
+  state.pendingChordTimeouts.push(firstTimeout);
 
   state.loopBarTimer = setInterval(()=>{
     state.barIndex = (state.barIndex + 1) % state.slots.length;
-    setTimeout(()=>{
+
+    const t = setTimeout(()=>{
+      if(state.mode !== "loop") return;
       state.cursor = state.barIndex;
       renderTimeline();
       playBarByIndex(state.barIndex);
     }, Math.max(0, chordOffset * 1000));
+
+    state.pendingChordTimeouts.push(t);
   }, barMs);
 }
 
@@ -647,7 +661,7 @@ document.getElementById("deleteBtn").onclick = deleteChord;
 document.getElementById("addBarsBtn").onclick = addBars;
 document.getElementById("leftBtn").onclick = moveLeft;
 document.getElementById("rightBtn").onclick = moveRight;
-document.getElementById("loopBtn").onclick = toggleLoop;
+loopBtn.onclick = toggleLoop;
 
 warmupBtn.onclick = warmupAudioAndMic;
 metroBtn.onclick = toggleMetronome;
