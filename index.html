@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ChordSketch v5.6.1</title>
+<title>ChordSketch v5.7</title>
 <style>
 :root{
   --bg:#081226;
@@ -105,15 +105,24 @@ audio{
   grid-template-columns:repeat(2,minmax(0,1fr));
   gap:10px;
 }
+.grid3{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:10px;
+}
 @media (max-width:640px){
-  .grid,.grid2{grid-template-columns:1fr}
+  .grid,.grid2,.grid3{grid-template-columns:1fr}
+}
+.small{
+  font-size:.9rem;
+  color:var(--muted);
 }
 </style>
 </head>
 <body>
 <div class="app">
-  <h1>ChordSketch v5.6.1</h1>
-  <p>LOOP停止時に予約済みコード再生もきちんと止める版。</p>
+  <h1>ChordSketch v5.7</h1>
+  <p>録音頭の自動トリム寄り版。手動オフセットの追い込み量を減らす。</p>
 
   <div class="panel">
     <h2 style="margin:0 0 12px;">フック録音</h2>
@@ -137,7 +146,11 @@ audio{
       </div>
     </div>
 
-    <div class="grid2" style="margin-top:12px;">
+    <div class="grid3" style="margin-top:12px;">
+      <div>
+        <label>自動トリム（秒）</label>
+        <input id="autoTrim" type="number" value="0.10" step="0.01">
+      </div>
       <div>
         <label>録音再生オフセット（秒）</label>
         <input id="audioOffset" type="number" value="0.00" step="0.01">
@@ -157,6 +170,9 @@ audio{
 
     <div class="status" id="recordStatus">ウォームアップ → メトロノーム開始 → 自分で数えて録音開始、が安定。</div>
     <audio id="audioPlayer" controls></audio>
+    <div class="small" style="margin-top:8px;">
+      LOOP時の録音再生位置 = 自動トリム + 録音再生オフセット
+    </div>
   </div>
 
   <div class="panel">
@@ -211,6 +227,7 @@ const warmupBtn = document.getElementById("warmupBtn");
 const metroBtn = document.getElementById("metroBtn");
 const audioOffsetEl = document.getElementById("audioOffset");
 const chordOffsetEl = document.getElementById("chordOffset");
+const autoTrimEl = document.getElementById("autoTrim");
 const loopBtn = document.getElementById("loopBtn");
 
 const state = {
@@ -506,6 +523,12 @@ function clearPendingChordTimeouts(){
   }
 }
 
+function effectiveAudioStart(){
+  const autoTrim = Number(autoTrimEl.value) || 0;
+  const audioOffset = Number(audioOffsetEl.value) || 0;
+  return Math.max(0, autoTrim + audioOffset);
+}
+
 function stopLoop(){
   if(state.loopBarTimer){
     clearInterval(state.loopBarTimer);
@@ -538,14 +561,14 @@ async function startLoop(){
   const beat = metroSecondsPerBeat();
   const barMs = beat * 4 * 1000;
   const chordOffset = Number(chordOffsetEl.value) || 0;
-  const audioOffset = Number(audioOffsetEl.value) || 0;
+  const audioStart = effectiveAudioStart();
 
   if(audioPlayer.src){
     try{
       audioPlayer.pause();
-      audioPlayer.currentTime = Math.max(0, audioOffset);
+      audioPlayer.currentTime = audioStart;
       await audioPlayer.play();
-      loopStatus.textContent = "録音 + コード同期再生中。ズレたら2つのオフセットを微調整。";
+      loopStatus.textContent = "録音 + コード同期再生中。ズレたら自動トリムと2つのオフセットを微調整。";
     }catch(e){
       loopStatus.textContent = "コード再生中。録音は手動再生が必要かも。";
     }
