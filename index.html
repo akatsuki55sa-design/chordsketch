@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ChordSketch v6.0</title>
+<title>ChordSketch v6.1</title>
 <style>
 :root{
   --bg:#081226;
@@ -15,6 +15,7 @@
   --accent:#3bb7ff;
   --accent2:#8dd7ff;
   --ok:#38d39f;
+  --warn:#ffc857;
 }
 *{box-sizing:border-box}
 body{
@@ -157,18 +158,45 @@ audio{
   font-size:.9rem;
   color:var(--muted);
 }
-.calBox{
+.waveWrap{
   margin-top:12px;
   padding:12px;
   border-radius:12px;
   background:#182640;
   border:1px solid var(--line);
 }
-.calValue{
-  font-size:1.1rem;
-  font-weight:700;
-  color:var(--ok);
-  margin-top:6px;
+.waveHeader{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  margin-bottom:8px;
+}
+.waveCanvas{
+  width:100%;
+  height:120px;
+  display:block;
+  background:#0d1730;
+  border-radius:10px;
+  border:1px solid #2a3b58;
+}
+.legend{
+  display:flex;
+  gap:12px;
+  flex-wrap:wrap;
+  margin-top:8px;
+}
+.legendItem{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  color:var(--muted);
+  font-size:.9rem;
+}
+.swatch{
+  width:12px;
+  height:12px;
+  border-radius:999px;
 }
 @media (max-width:640px){
   .grid,.grid2,.grid3{grid-template-columns:1fr}
@@ -177,8 +205,8 @@ audio{
 </head>
 <body>
 <div class="app">
-  <h1>ChordSketch v6.0</h1>
-  <p>端末レイテンシの半自動キャリブレーション付き版。</p>
+  <h1>ChordSketch v6.1</h1>
+  <p>録音後の波形とトリム位置を見える化した版。</p>
 
   <div class="panel">
     <h2 style="margin:0 0 12px;">フック録音</h2>
@@ -237,16 +265,17 @@ audio{
       LOOP時の録音再生位置 = 自動トリム + 録音再生オフセット
     </div>
 
-    <div class="calBox">
-      <div class="row">
-        <button id="calibrateBtn" type="button">キャリブ開始</button>
-        <button id="applyCalBtn" type="button" class="ok">推奨値を適用</button>
+    <div class="waveWrap">
+      <div class="waveHeader">
+        <strong>録音波形</strong>
+        <span class="small" id="waveInfo">録音後に表示</span>
       </div>
-      <div class="small" style="margin-top:8px;">
-        4拍クリックを録音して、この端末の推奨トリム値を出す。
+      <canvas id="waveCanvas" class="waveCanvas" width="800" height="120"></canvas>
+      <div class="legend">
+        <div class="legendItem"><span class="swatch" style="background:#3bb7ff;"></span>波形</div>
+        <div class="legendItem"><span class="swatch" style="background:#ffc857;"></span>自動トリム位置</div>
+        <div class="legendItem"><span class="swatch" style="background:#38d39f;"></span>実再生位置（トリム + 録音オフセット）</div>
       </div>
-      <div class="calValue" id="calResult">推奨トリム: 未計測</div>
-      <audio id="calAudioPlayer" controls style="display:none;"></audio>
     </div>
   </div>
 
@@ -292,10 +321,8 @@ const slashSel = document.getElementById("slash");
 const timelineEl = document.getElementById("timeline");
 const bpmEl = document.getElementById("bpm");
 const audioPlayer = document.getElementById("audioPlayer");
-const calAudioPlayer = document.getElementById("calAudioPlayer");
 const recordStatus = document.getElementById("recordStatus");
 const loopStatus = document.getElementById("loopStatus");
-const calResult = document.getElementById("calResult");
 const startRecBtn = document.getElementById("startRecBtn");
 const stopRecBtn = document.getElementById("stopRecBtn");
 const downloadRecBtn = document.getElementById("downloadRecBtn");
@@ -306,9 +333,9 @@ const audioOffsetEl = document.getElementById("audioOffset");
 const chordOffsetEl = document.getElementById("chordOffset");
 const autoTrimEl = document.getElementById("autoTrim");
 const loopBtn = document.getElementById("loopBtn");
-const calibrateBtn = document.getElementById("calibrateBtn");
-const applyCalBtn = document.getElementById("applyCalBtn");
 const beatEls = [...document.querySelectorAll(".beat")];
+const waveCanvas = document.getElementById("waveCanvas");
+const waveInfo = document.getElementById("waveInfo");
 
 const state = {
   slots: ["-","-","-","-"],
@@ -321,7 +348,7 @@ const state = {
   recordedBlob: null,
 
   warmedUp: false,
-  mode: "idle", // idle, recording, loop, calibrating
+  mode: "idle", // idle, recording, loop
 
   metroTimerId: null,
   metroLookahead: 25.0,
@@ -338,8 +365,8 @@ const state = {
   currentBeatVisual: -1,
   playingBarIndex: -1,
 
-  calibrationBlob: null,
-  calibrationSuggestedTrim: null
+  waveformData: null,
+  waveformDuration: 0
 };
 
 function buildSelects(){
@@ -518,7 +545,7 @@ function metroScheduler(){
 
     const visualDelay = Math.max(0, (state.metroNextNoteTime - state.audioCtx.currentTime) * 1000);
     const t = setTimeout(()=>{
-      if(state.metronomeOn || state.mode === "loop" || state.mode === "calibrating"){
+      if(state.metronomeOn || state.mode === "loop"){
         setBeatVisual(beatInBar);
       }
     }, visualDelay);
@@ -547,7 +574,7 @@ function stopMetronome(){
   }
   state.metronomeOn = false;
   metroBtn.textContent = "メトロノーム開始";
-  if(state.mode !== "loop" && state.mode !== "calibrating") clearBeatVisual();
+  if(state.mode !== "loop") clearBeatVisual();
 }
 
 async function toggleMetronome(){
@@ -734,8 +761,102 @@ function toggleLoop(){
   else startLoop();
 }
 
+async function decodeBlobToWaveform(blob){
+  const arrayBuffer = await blob.arrayBuffer();
+  const tempCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const audioBuffer = await tempCtx.decodeAudioData(arrayBuffer.slice(0));
+  await tempCtx.close();
+
+  const ch = audioBuffer.getChannelData(0);
+  const samples = 800;
+  const blockSize = Math.floor(ch.length / samples) || 1;
+  const data = [];
+
+  for(let i = 0; i < samples; i++){
+    let sum = 0;
+    const start = i * blockSize;
+    const end = Math.min(start + blockSize, ch.length);
+    for(let j = start; j < end; j++){
+      sum += Math.abs(ch[j]);
+    }
+    data.push(sum / Math.max(1, end - start));
+  }
+
+  state.waveformData = data;
+  state.waveformDuration = audioBuffer.duration;
+  drawWaveform();
+}
+
+function drawWaveform(){
+  const ctx = waveCanvas.getContext("2d");
+  const w = waveCanvas.width;
+  const h = waveCanvas.height;
+
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle = "#0d1730";
+  ctx.fillRect(0,0,w,h);
+
+  // center line
+  ctx.strokeStyle = "#243656";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, h/2);
+  ctx.lineTo(w, h/2);
+  ctx.stroke();
+
+  if(!state.waveformData || !state.waveformData.length || !state.waveformDuration){
+    ctx.fillStyle = "#8fa1c5";
+    ctx.font = "14px system-ui";
+    ctx.fillText("録音後に波形が表示されます", 20, 30);
+    return;
+  }
+
+  const max = Math.max(...state.waveformData, 0.001);
+  const step = w / state.waveformData.length;
+
+  ctx.strokeStyle = "#3bb7ff";
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+
+  for(let i = 0; i < state.waveformData.length; i++){
+    const v = state.waveformData[i] / max;
+    const barH = v * (h * 0.42);
+    const x = i * step;
+    ctx.moveTo(x, h/2 - barH);
+    ctx.lineTo(x, h/2 + barH);
+  }
+  ctx.stroke();
+
+  const trimSec = Math.max(0, Number(autoTrimEl.value) || 0);
+  const effectiveSec = effectiveAudioStart();
+
+  const trimX = Math.min(w, (trimSec / state.waveformDuration) * w);
+  const effectiveX = Math.min(w, (effectiveSec / state.waveformDuration) * w);
+
+  // trim line
+  ctx.strokeStyle = "#ffc857";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(trimX, 0);
+  ctx.lineTo(trimX, h);
+  ctx.stroke();
+
+  // effective playback line
+  ctx.strokeStyle = "#38d39f";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(effectiveX, 0);
+  ctx.lineTo(effectiveX, h);
+  ctx.stroke();
+
+  ctx.fillStyle = "#8fa1c5";
+  ctx.font = "12px system-ui";
+  ctx.fillText(`長さ: ${state.waveformDuration.toFixed(2)} 秒`, 12, h - 10);
+  waveInfo.textContent = `長さ ${state.waveformDuration.toFixed(2)} 秒 / トリム ${trimSec.toFixed(2)} 秒 / 実再生 ${effectiveSec.toFixed(2)} 秒`;
+}
+
 async function startRecording(){
-  if(state.mode === "recording" || state.mode === "calibrating") return;
+  if(state.mode === "recording") return;
 
   if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
     recordStatus.textContent = "このブラウザでは録音APIが使えないみたい。";
@@ -757,7 +878,7 @@ async function startRecording(){
       }
     };
 
-    state.mediaRecorder.onstop = ()=>{
+    state.mediaRecorder.onstop = async ()=>{
       state.recordedBlob = new Blob(
         state.recordedChunks,
         { type: state.mediaRecorder.mimeType || "audio/webm" }
@@ -774,6 +895,12 @@ async function startRecording(){
       state.mode = "idle";
 
       recordStatus.textContent = "録音できた。必要なら「録音を保存」でダウンロード。";
+
+      try{
+        await decodeBlobToWaveform(state.recordedBlob);
+      }catch(e){
+        waveInfo.textContent = "波形解析失敗";
+      }
     };
 
     state.mediaRecorder.start();
@@ -808,133 +935,6 @@ function downloadRecording(){
   a.click();
 }
 
-// ---- calibration ----
-async function decodeBlobToBuffer(blob){
-  const arrayBuffer = await blob.arrayBuffer();
-  const tempCtx = new (window.AudioContext || window.webkitAudioContext)();
-  const audioBuffer = await tempCtx.decodeAudioData(arrayBuffer.slice(0));
-  await tempCtx.close();
-  return audioBuffer;
-}
-
-function suggestTrimFromBuffer(audioBuffer){
-  const channel = audioBuffer.getChannelData(0);
-  const sampleRate = audioBuffer.sampleRate;
-
-  let max = 0;
-  for(let i = 0; i < channel.length; i++){
-    const v = Math.abs(channel[i]);
-    if(v > max) max = v;
-  }
-
-  const threshold = Math.max(0.03, max * 0.18);
-
-  let hitIndex = -1;
-  for(let i = 0; i < channel.length; i++){
-    if(Math.abs(channel[i]) >= threshold){
-      hitIndex = i;
-      break;
-    }
-  }
-
-  if(hitIndex < 0) return null;
-
-  const seconds = hitIndex / sampleRate;
-  const rounded = Math.max(0, Math.round(seconds * 100) / 100);
-  return rounded;
-}
-
-async function runCalibration(){
-  if(state.mode === "recording" || state.mode === "loop" || state.mode === "calibrating") return;
-
-  try{
-    await ensureAudio();
-
-    state.mode = "calibrating";
-    recordStatus.textContent = "キャリブ中… 4拍クリックを録音してる。";
-
-    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
-    state.mediaStream = stream;
-    state.recordedChunks = [];
-    state.mediaRecorder = new MediaRecorder(stream);
-
-    state.mediaRecorder.ondataavailable = (e)=>{
-      if(e.data && e.data.size > 0){
-        state.recordedChunks.push(e.data);
-      }
-    };
-
-    state.mediaRecorder.onstop = async ()=>{
-      try{
-        state.calibrationBlob = new Blob(
-          state.recordedChunks,
-          { type: state.mediaRecorder.mimeType || "audio/webm" }
-        );
-        calAudioPlayer.src = URL.createObjectURL(state.calibrationBlob);
-
-        const buffer = await decodeBlobToBuffer(state.calibrationBlob);
-        const suggested = suggestTrimFromBuffer(buffer);
-
-        if(suggested == null){
-          calResult.textContent = "推奨トリム: 検出失敗";
-        }else{
-          state.calibrationSuggestedTrim = suggested;
-          calResult.textContent = `推奨トリム: ${suggested.toFixed(2)} 秒`;
-        }
-
-        recordStatus.textContent = "キャリブ完了。推奨値を適用できる。";
-      }catch(err){
-        calResult.textContent = "推奨トリム: 解析失敗";
-        recordStatus.textContent = "キャリブ解析に失敗。";
-      }finally{
-        if(state.mediaStream){
-          state.mediaStream.getTracks().forEach(t => t.stop());
-        }
-        state.mediaStream = null;
-        state.mediaRecorder = null;
-        state.mode = "idle";
-        if(!state.metronomeOn) clearBeatVisual();
-      }
-    };
-
-    state.mediaRecorder.start();
-
-    const beat = metroSecondsPerBeat();
-    const startAt = state.audioCtx.currentTime + 0.10;
-
-    for(let i = 0; i < 4; i++){
-      scheduleClick(startAt + i * beat, i === 0);
-      const delay = Math.max(0, (startAt + i * beat - state.audioCtx.currentTime) * 1000);
-      const t = setTimeout(()=>setBeatVisual(i), delay);
-      state.pendingAudioTimeouts.push(t);
-    }
-
-    const stopDelayMs = Math.max(0, ((startAt + (beat * 4) + 0.5) - state.audioCtx.currentTime) * 1000);
-    const stopTimer = setTimeout(()=>{
-      if(state.mediaRecorder && state.mode === "calibrating"){
-        state.mediaRecorder.stop();
-      }
-    }, stopDelayMs);
-    state.pendingAudioTimeouts.push(stopTimer);
-
-  }catch(err){
-    state.mode = "idle";
-    if(state.mediaStream){
-      state.mediaStream.getTracks().forEach(t => t.stop());
-      state.mediaStream = null;
-    }
-    state.mediaRecorder = null;
-    recordStatus.textContent = "キャリブ失敗。マイク許可を確認してみて。";
-  }
-}
-
-function applyCalibration(){
-  if(state.calibrationSuggestedTrim == null) return;
-  autoTrimEl.value = state.calibrationSuggestedTrim.toFixed(2);
-  recordStatus.textContent = `推奨トリム ${state.calibrationSuggestedTrim.toFixed(2)} 秒 を適用した。`;
-}
-// ---- end calibration ----
-
 document.getElementById("addChordBtn").onclick = ()=>{ addChordToTimeline(); };
 document.getElementById("previewBtn").onclick = ()=>{ playChord(rootSel.value, typeSel.value); };
 document.getElementById("deleteBtn").onclick = deleteChord;
@@ -948,15 +948,17 @@ metroBtn.onclick = toggleMetronome;
 startRecBtn.onclick = startRecording;
 stopRecBtn.onclick = stopRecording;
 downloadRecBtn.onclick = downloadRecording;
-calibrateBtn.onclick = runCalibration;
-applyCalBtn.onclick = applyCalibration;
 
 rootSel.onchange = ()=>{ playChord(rootSel.value, typeSel.value); };
 typeSel.onchange = ()=>{ playChord(rootSel.value, typeSel.value); };
 slashSel.onchange = ()=>{ playChord(rootSel.value, typeSel.value); };
 
+autoTrimEl.addEventListener("input", drawWaveform);
+audioOffsetEl.addEventListener("input", drawWaveform);
+
 buildSelects();
 renderTimeline();
+drawWaveform();
 </script>
 </body>
 </html>
