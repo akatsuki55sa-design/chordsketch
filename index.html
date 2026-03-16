@@ -3,12 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>HookPad v6.2</title>
+<title>HookPad v6.3</title>
 <style>
 :root{
   --bg:#081226;
   --panel:#0f1b33;
-  --panel2:#182640;
   --line:#31435f;
   --text:#e8eefc;
   --muted:#9fb0d1;
@@ -60,9 +59,7 @@ button{
   background:#1b2b47;
   color:white;
 }
-button:active{
-  transform:scale(.99);
-}
+button:active{ transform:scale(.99); }
 input,select,textarea{
   width:100%;
   padding:12px;
@@ -71,9 +68,7 @@ input,select,textarea{
   background:#182640;
   color:white;
 }
-textarea{
-  min-height:90px;
-}
+textarea{ min-height:90px; }
 .timeline{
   display:flex;
   gap:8px;
@@ -97,6 +92,10 @@ textarea{
   background:#213558;
   border-color:var(--accent);
   box-shadow:0 0 18px rgba(59,183,255,.22);
+}
+.slot.loopRange{
+  border-color:#ffc857;
+  box-shadow:0 0 0 1px rgba(255,200,87,.35) inset;
 }
 .status{
   margin-top:10px;
@@ -122,6 +121,11 @@ audio{
 .grid3{
   display:grid;
   grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:10px;
+}
+.grid4{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
   gap:10px;
 }
 .beatBox{
@@ -195,14 +199,14 @@ audio{
   border-radius:999px;
 }
 @media (max-width:640px){
-  .grid,.grid2,.grid3{grid-template-columns:1fr}
+  .grid,.grid2,.grid3,.grid4{grid-template-columns:1fr}
 }
 </style>
 </head>
 <body>
 <div class="app">
-  <h1>HookPad v6.2</h1>
-  <p>ループの基準時刻を1本化して、コード・録音・拍表示の同期を詰めた版。</p>
+  <h1>HookPad v6.3</h1>
+  <p>ループ開始・終了小節を指定できる版。</p>
 
   <div class="panel">
     <h2 style="margin:0 0 12px;">フック録音</h2>
@@ -229,7 +233,7 @@ audio{
     <div class="grid3" style="margin-top:12px;">
       <div>
         <label>自動トリム（秒）</label>
-        <input id="autoTrim" type="number" value="0.90" step="0.01">
+        <input id="autoTrim" type="number" value="2.54" step="0.01">
       </div>
       <div>
         <label>録音再生オフセット（秒）</label>
@@ -248,7 +252,7 @@ audio{
       </label>
     </div>
 
-    <div class="beatBox" id="beatBox">
+    <div class="beatBox">
       <div class="beat" data-beat="0">1</div>
       <div class="beat" data-beat="1">2</div>
       <div class="beat" data-beat="2">3</div>
@@ -270,14 +274,33 @@ audio{
       <div class="legend">
         <div class="legendItem"><span class="swatch" style="background:#3bb7ff;"></span>波形</div>
         <div class="legendItem"><span class="swatch" style="background:#ffc857;"></span>自動トリム位置</div>
-        <div class="legendItem"><span class="swatch" style="background:#38d39f;"></span>実再生位置（トリム + 録音オフセット）</div>
+        <div class="legendItem"><span class="swatch" style="background:#38d39f;"></span>実再生位置</div>
       </div>
     </div>
   </div>
 
   <div class="panel">
     <h2 style="margin:0 0 12px;">コード進行</h2>
+
+    <div class="grid4" style="margin-bottom:12px;">
+      <div>
+        <label>ループ開始小節</label>
+        <input id="loopStartBar" type="number" min="1" value="1">
+      </div>
+      <div>
+        <label>ループ終了小節</label>
+        <input id="loopEndBar" type="number" min="1" value="4">
+      </div>
+      <div style="display:flex;align-items:end;">
+        <button id="setLoopToSelectionBtn" type="button" style="width:100%;">現在選択を開始に</button>
+      </div>
+      <div style="display:flex;align-items:end;">
+        <button id="setLoopEndToSelectionBtn" type="button" style="width:100%;">現在選択を終了に</button>
+      </div>
+    </div>
+
     <div class="timeline" id="timeline"></div>
+
     <div class="row">
       <button id="leftBtn" type="button">◀</button>
       <button id="rightBtn" type="button">▶</button>
@@ -285,7 +308,8 @@ audio{
       <button id="addBarsBtn" type="button">+4</button>
       <button id="loopBtn" type="button">LOOP</button>
     </div>
-    <div class="status" id="loopStatus">コードを基準に同期。コード再生オフセットは小さい値で詰める想定。</div>
+
+    <div class="status" id="loopStatus">指定した範囲だけループする。サビだけ回す用途向け。</div>
   </div>
 
   <div class="panel">
@@ -319,19 +343,21 @@ const bpmEl = document.getElementById("bpm");
 const audioPlayer = document.getElementById("audioPlayer");
 const recordStatus = document.getElementById("recordStatus");
 const loopStatus = document.getElementById("loopStatus");
-const startRecBtn = document.getElementById("startRecBtn");
-const stopRecBtn = document.getElementById("stopRecBtn");
-const downloadRecBtn = document.getElementById("downloadRecBtn");
 const clickToggle = document.getElementById("clickToggle");
 const warmupBtn = document.getElementById("warmupBtn");
 const metroBtn = document.getElementById("metroBtn");
+const startRecBtn = document.getElementById("startRecBtn");
+const stopRecBtn = document.getElementById("stopRecBtn");
+const downloadRecBtn = document.getElementById("downloadRecBtn");
+const autoTrimEl = document.getElementById("autoTrim");
 const audioOffsetEl = document.getElementById("audioOffset");
 const chordOffsetEl = document.getElementById("chordOffset");
-const autoTrimEl = document.getElementById("autoTrim");
 const loopBtn = document.getElementById("loopBtn");
 const beatEls = [...document.querySelectorAll(".beat")];
 const waveCanvas = document.getElementById("waveCanvas");
 const waveInfo = document.getElementById("waveInfo");
+const loopStartBarEl = document.getElementById("loopStartBar");
+const loopEndBarEl = document.getElementById("loopEndBar");
 
 const state = {
   slots: ["-","-","-","-"],
@@ -344,7 +370,7 @@ const state = {
   recordedBlob: null,
 
   warmedUp: false,
-  mode: "idle", // idle, recording, loop
+  mode: "idle",
 
   metroTimerId: null,
   metroLookahead: 25.0,
@@ -353,20 +379,45 @@ const state = {
   metroBeatNumber: 0,
   metronomeOn: false,
 
-  loopBarTimer: null,
-  barIndex: 0,
   pendingChordTimeouts: [],
   pendingAudioTimeouts: [],
+  loopRafId: null,
+  loopStartTime: 0,
 
   currentBeatVisual: -1,
   playingBarIndex: -1,
 
   waveformData: null,
-  waveformDuration: 0,
-
-  loopStartTime: 0,
-  loopRafId: null
+  waveformDuration: 0
 };
+
+function saveSettings(){
+  const data = {
+    bpm: bpmEl.value,
+    autoTrim: autoTrimEl.value,
+    audioOffset: audioOffsetEl.value,
+    chordOffset: chordOffsetEl.value,
+    click: clickToggle.checked,
+    loopStartBar: loopStartBarEl.value,
+    loopEndBar: loopEndBarEl.value
+  };
+  localStorage.setItem("hookpad_settings", JSON.stringify(data));
+}
+
+function loadSettings(){
+  const raw = localStorage.getItem("hookpad_settings");
+  if(!raw) return;
+  try{
+    const data = JSON.parse(raw);
+    if(data.bpm !== undefined) bpmEl.value = data.bpm;
+    if(data.autoTrim !== undefined) autoTrimEl.value = data.autoTrim;
+    if(data.audioOffset !== undefined) audioOffsetEl.value = data.audioOffset;
+    if(data.chordOffset !== undefined) chordOffsetEl.value = data.chordOffset;
+    if(typeof data.click === "boolean") clickToggle.checked = data.click;
+    if(data.loopStartBar !== undefined) loopStartBarEl.value = data.loopStartBar;
+    if(data.loopEndBar !== undefined) loopEndBarEl.value = data.loopEndBar;
+  }catch(e){}
+}
 
 function buildSelects(){
   roots.forEach(r=>{
@@ -395,15 +446,38 @@ function buildSelects(){
   });
 }
 
+function normalizedLoopRange(){
+  const total = state.slots.length;
+  let start = parseInt(loopStartBarEl.value || "1", 10);
+  let end = parseInt(loopEndBarEl.value || String(total), 10);
+
+  if(Number.isNaN(start)) start = 1;
+  if(Number.isNaN(end)) end = total;
+
+  start = Math.max(1, Math.min(start, total));
+  end = Math.max(1, Math.min(end, total));
+
+  if(start > end){
+    const tmp = start;
+    start = end;
+    end = tmp;
+  }
+
+  return { start, end };
+}
+
 function renderTimeline(){
+  const range = normalizedLoopRange();
   timelineEl.innerHTML = "";
   state.slots.forEach((chord, i)=>{
+    const barNo = i + 1;
     const div = document.createElement("button");
     div.type = "button";
     div.className = "slot";
     if(i === state.cursor) div.classList.add("active");
     if(i === state.playingBarIndex) div.classList.add("playing");
-    div.textContent = chord + " / " + (i + 1) + "小節目";
+    if(barNo >= range.start && barNo <= range.end) div.classList.add("loopRange");
+    div.textContent = chord + " / " + barNo + "小節目";
     div.onclick = ()=>{
       state.cursor = i;
       renderTimeline();
@@ -474,7 +548,6 @@ async function playChord(root, type){
 
     osc.type = "sine";
     osc.frequency.value = noteFreq(note);
-
     osc.connect(gain);
     gain.connect(state.audioCtx.destination);
 
@@ -488,7 +561,6 @@ async function playChord(root, type){
 
 async function playBass(root){
   await ensureAudio();
-
   const map = {
     C:0,"C#":1,Db:1,D:2,"D#":3,Eb:3,E:4,F:5,"F#":6,Gb:6,
     G:7,"G#":8,Ab:8,A:9,"A#":10,Bb:10,B:11
@@ -498,10 +570,8 @@ async function playBass(root){
 
   const osc = state.audioCtx.createOscillator();
   const gain = state.audioCtx.createGain();
-
   osc.type = "sawtooth";
   osc.frequency.value = freq;
-
   osc.connect(gain);
   gain.connect(state.audioCtx.destination);
 
@@ -521,10 +591,8 @@ function scheduleClick(time, isDownbeat){
 
   const osc = state.audioCtx.createOscillator();
   const gain = state.audioCtx.createGain();
-
   osc.type = "square";
   osc.frequency.value = isDownbeat ? 1400 : 1000;
-
   osc.connect(gain);
   gain.connect(state.audioCtx.destination);
 
@@ -558,7 +626,6 @@ function metroScheduler(){
 async function startMetronome(){
   await ensureAudio();
   stopMetronome();
-
   state.metroBeatNumber = 0;
   state.metroNextNoteTime = state.audioCtx.currentTime + 0.08;
   state.metroTimerId = setInterval(metroScheduler, state.metroLookahead);
@@ -632,7 +699,9 @@ function deleteChord(){
 
 function addBars(){
   state.slots.push("-","-","-","-");
+  loopEndBarEl.value = state.slots.length;
   renderTimeline();
+  saveSettings();
 }
 
 function moveLeft(){
@@ -685,10 +754,32 @@ function effectiveAudioStart(){
   return Math.max(0, autoTrim + audioOffset);
 }
 
+function stopLoop(){
+  clearPendingChordTimeouts();
+  clearPendingAudioTimeouts();
+  clearLoopRaf();
+
+  state.mode = "idle";
+  state.playingBarIndex = -1;
+  state.loopStartTime = 0;
+  loopBtn.textContent = "LOOP";
+  loopStatus.textContent = "LOOP停止。";
+
+  if(!audioPlayer.paused){
+    audioPlayer.pause();
+    audioPlayer.currentTime = 0;
+  }
+
+  if(!state.metronomeOn) clearBeatVisual();
+  renderTimeline();
+}
+
 function scheduleLoopVisualsAndChords(startTime, chordOffsetSec){
   const beatSec = metroSecondsPerBeat();
   const barSec = beatSec * 4;
-  const totalBars = state.slots.length;
+  const range = normalizedLoopRange();
+  const startIndex = range.start - 1;
+  const loopBarCount = (range.end - range.start + 1);
 
   function tick(){
     if(state.mode !== "loop" || !state.audioCtx){
@@ -703,7 +794,8 @@ function scheduleLoopVisualsAndChords(startTime, chordOffsetSec){
       const beatInBar = Math.floor(elapsed / beatSec) % 4;
       setBeatVisual(beatInBar);
 
-      const barIndex = Math.floor(elapsed / barSec) % totalBars;
+      const localBar = Math.floor(elapsed / barSec) % loopBarCount;
+      const barIndex = startIndex + localBar;
 
       if(barIndex !== state.playingBarIndex){
         state.playingBarIndex = barIndex;
@@ -726,35 +818,8 @@ function scheduleLoopVisualsAndChords(startTime, chordOffsetSec){
   tick();
 }
 
-function stopLoop(){
-  if(state.loopBarTimer){
-    clearInterval(state.loopBarTimer);
-    state.loopBarTimer = null;
-  }
-
-  clearPendingChordTimeouts();
-  clearPendingAudioTimeouts();
-  clearLoopRaf();
-
-  state.mode = "idle";
-  state.playingBarIndex = -1;
-  state.loopStartTime = 0;
-
-  loopBtn.textContent = "LOOP";
-  loopStatus.textContent = "LOOP停止。";
-
-  if(!audioPlayer.paused){
-    audioPlayer.pause();
-    audioPlayer.currentTime = 0;
-  }
-
-  if(!state.metronomeOn) clearBeatVisual();
-  renderTimeline();
-}
-
 async function startLoop(){
   stopLoop();
-
   state.mode = "loop";
   loopBtn.textContent = "STOP LOOP";
 
@@ -762,13 +827,17 @@ async function startLoop(){
 
   const chordOffset = Number(chordOffsetEl.value) || 0;
   const audioStart = effectiveAudioStart();
+  const range = normalizedLoopRange();
+  const startIndex = range.start - 1;
+  const loopBarCount = range.end - range.start + 1;
 
   const startTime = state.audioCtx.currentTime + 0.18;
   state.loopStartTime = startTime;
 
   if(clickToggle.checked){
     const beatSec = metroSecondsPerBeat();
-    for(let i = 0; i < 16; i++){
+    const totalBeats = Math.max(16, loopBarCount * 4 * 4);
+    for(let i = 0; i < totalBeats; i++){
       const t = startTime + (i * beatSec);
       scheduleClick(t, i % 4 === 0);
     }
@@ -776,22 +845,20 @@ async function startLoop(){
 
   if(audioPlayer.src){
     const delayMs = Math.max(0, (startTime - state.audioCtx.currentTime) * 1000);
-
     const audioTimer = setTimeout(async ()=>{
       if(state.mode !== "loop") return;
       try{
         audioPlayer.pause();
-        audioPlayer.currentTime = audioStart;
+        audioPlayer.currentTime = audioStart + (startIndex * metroSecondsPerBeat() * 4);
         await audioPlayer.play();
-        loopStatus.textContent = "コード基準で録音 + コード同期再生中。";
+        loopStatus.textContent = `${range.start}〜${range.end}小節目をループ中。`;
       }catch(e){
         loopStatus.textContent = "コード再生中。録音は手動再生が必要かも。";
       }
     }, delayMs);
-
     state.pendingAudioTimeouts.push(audioTimer);
   }else{
-    loopStatus.textContent = "コード再生中。録音はまだ無し。";
+    loopStatus.textContent = `${range.start}〜${range.end}小節目をループ中。録音はまだ無し。`;
   }
 
   scheduleLoopVisualsAndChords(startTime, chordOffset);
@@ -895,7 +962,6 @@ function drawWaveform(){
 
 async function startRecording(){
   if(state.mode === "recording") return;
-
   if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
     recordStatus.textContent = "このブラウザでは録音APIが使えないみたい。";
     return;
@@ -903,17 +969,13 @@ async function startRecording(){
 
   try{
     await ensureAudio();
-
     recordStatus.textContent = "録音開始中…";
     state.mediaStream = await navigator.mediaDevices.getUserMedia({audio:true});
-
     state.recordedChunks = [];
     state.mediaRecorder = new MediaRecorder(state.mediaStream);
 
     state.mediaRecorder.ondataavailable = (e)=>{
-      if(e.data && e.data.size > 0){
-        state.recordedChunks.push(e.data);
-      }
+      if(e.data && e.data.size > 0) state.recordedChunks.push(e.data);
     };
 
     state.mediaRecorder.onstop = async ()=>{
@@ -931,7 +993,6 @@ async function startRecording(){
       state.mediaStream = null;
       state.mediaRecorder = null;
       state.mode = "idle";
-
       recordStatus.textContent = "録音できた。必要なら「録音を保存」でダウンロード。";
 
       try{
@@ -944,15 +1005,12 @@ async function startRecording(){
     state.mediaRecorder.start();
     state.mode = "recording";
     recordStatus.textContent = "録音中…「録音停止」で止める。";
-
   }catch(err){
     state.mode = "idle";
-
     if(state.mediaStream){
       state.mediaStream.getTracks().forEach(t => t.stop());
       state.mediaStream = null;
     }
-
     state.mediaRecorder = null;
     recordStatus.textContent = "録音開始に失敗。マイク許可を確認してみて。";
   }
@@ -966,14 +1024,34 @@ function stopRecording(){
 
 function downloadRecording(){
   if(!state.recordedBlob) return;
-
   const a = document.createElement("a");
   a.href = URL.createObjectURL(state.recordedBlob);
   a.download = "hook-recording.webm";
   a.click();
 }
 
-document.getElementById("addChordBtn").onclick = ()=>{ addChordToTimeline(); };
+document.getElementById("setLoopToSelectionBtn").onclick = ()=>{
+  loopStartBarEl.value = state.cursor + 1;
+  if(parseInt(loopEndBarEl.value || "1", 10) < state.cursor + 1){
+    loopEndBarEl.value = state.cursor + 1;
+  }
+  renderTimeline();
+  saveSettings();
+};
+
+document.getElementById("setLoopEndToSelectionBtn").onclick = ()=>{
+  loopEndBarEl.value = state.cursor + 1;
+  if(parseInt(loopStartBarEl.value || "1", 10) > state.cursor + 1){
+    loopStartBarEl.value = state.cursor + 1;
+  }
+  renderTimeline();
+  saveSettings();
+};
+
+document.getElementById("addChordBtn").onclick = async ()=>{
+  await addChordToTimeline();
+};
+
 document.getElementById("previewBtn").onclick = ()=>{ playChord(rootSel.value, typeSel.value); };
 document.getElementById("deleteBtn").onclick = deleteChord;
 document.getElementById("addBarsBtn").onclick = addBars;
@@ -991,10 +1069,16 @@ rootSel.onchange = ()=>{ playChord(rootSel.value, typeSel.value); };
 typeSel.onchange = ()=>{ playChord(rootSel.value, typeSel.value); };
 slashSel.onchange = ()=>{ playChord(rootSel.value, typeSel.value); };
 
-autoTrimEl.addEventListener("input", drawWaveform);
-audioOffsetEl.addEventListener("input", drawWaveform);
+bpmEl.addEventListener("change", saveSettings);
+autoTrimEl.addEventListener("change", ()=>{ saveSettings(); drawWaveform(); });
+audioOffsetEl.addEventListener("change", ()=>{ saveSettings(); drawWaveform(); });
+chordOffsetEl.addEventListener("change", saveSettings);
+clickToggle.addEventListener("change", saveSettings);
+loopStartBarEl.addEventListener("change", ()=>{ renderTimeline(); saveSettings(); });
+loopEndBarEl.addEventListener("change", ()=>{ renderTimeline(); saveSettings(); });
 
 buildSelects();
+loadSettings();
 renderTimeline();
 drawWaveform();
 </script>
