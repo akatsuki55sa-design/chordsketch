@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>HookPad v6.3</title>
+<title>HookPad v6.4</title>
 <style>
 :root{
   --bg:#081226;
@@ -198,15 +198,29 @@ audio{
   height:12px;
   border-radius:999px;
 }
+.quickChordGrid{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:10px;
+}
+.quickChordBtn{
+  padding:14px 10px;
+  font-weight:700;
+  background:#1a2b48;
+}
+.quickChordBtn.empty{
+  opacity:.45;
+}
 @media (max-width:640px){
   .grid,.grid2,.grid3,.grid4{grid-template-columns:1fr}
+  .quickChordGrid{grid-template-columns:repeat(3,minmax(0,1fr))}
 }
 </style>
 </head>
 <body>
 <div class="app">
-  <h1>HookPad v6.3</h1>
-  <p>ループ開始・終了小節を指定できる版。</p>
+  <h1>HookPad v6.4</h1>
+  <p>ループ範囲指定 + クイックコード入力 + 最近使ったコード対応版。</p>
 
   <div class="panel">
     <h2 style="margin:0 0 12px;">フック録音</h2>
@@ -314,11 +328,27 @@ audio{
 
   <div class="panel">
     <h2 style="margin:0 0 12px;">コード入力</h2>
-    <div class="grid">
+
+    <div class="small" style="margin-bottom:8px;">クイック入力</div>
+    <div class="quickChordGrid" id="quickChordGrid">
+      <button type="button" class="quickChordBtn" data-chord="C">C</button>
+      <button type="button" class="quickChordBtn" data-chord="Dm">Dm</button>
+      <button type="button" class="quickChordBtn" data-chord="Em">Em</button>
+      <button type="button" class="quickChordBtn" data-chord="F">F</button>
+      <button type="button" class="quickChordBtn" data-chord="G">G</button>
+      <button type="button" class="quickChordBtn" data-chord="Am">Am</button>
+      <button type="button" class="quickChordBtn" data-chord="Bdim">Bdim</button>
+    </div>
+
+    <div class="small" style="margin:12px 0 8px;">最近使ったコード</div>
+    <div class="quickChordGrid" id="recentChordGrid"></div>
+
+    <div class="grid" style="margin-top:12px;">
       <select id="root"></select>
       <select id="type"></select>
       <select id="slash"></select>
     </div>
+
     <div class="row" style="margin-top:12px;">
       <button id="addChordBtn" type="button">追加</button>
       <button id="previewBtn" type="button">試聴</button>
@@ -388,7 +418,9 @@ const state = {
   playingBarIndex: -1,
 
   waveformData: null,
-  waveformDuration: 0
+  waveformDuration: 0,
+
+  recentChords: []
 };
 
 function saveSettings(){
@@ -399,7 +431,8 @@ function saveSettings(){
     chordOffset: chordOffsetEl.value,
     click: clickToggle.checked,
     loopStartBar: loopStartBarEl.value,
-    loopEndBar: loopEndBarEl.value
+    loopEndBar: loopEndBarEl.value,
+    recentChords: state.recentChords
   };
   localStorage.setItem("hookpad_settings", JSON.stringify(data));
 }
@@ -416,6 +449,7 @@ function loadSettings(){
     if(typeof data.click === "boolean") clickToggle.checked = data.click;
     if(data.loopStartBar !== undefined) loopStartBarEl.value = data.loopStartBar;
     if(data.loopEndBar !== undefined) loopEndBarEl.value = data.loopEndBar;
+    if(Array.isArray(data.recentChords)) state.recentChords = data.recentChords.slice(0, 6);
   }catch(e){}
 }
 
@@ -509,6 +543,44 @@ function currentChordName(){
   return root + type + (slash ? "/" + slash : "");
 }
 
+function parseChordName(chord){
+  const m = chord.match(/^([A-G][b#]?)(.*?)(?:\/([A-G][b#]?))?$/);
+  if(!m) return { root:"C", type:"", slash:"" };
+  return {
+    root: m[1] || "C",
+    type: m[2] || "",
+    slash: m[3] || ""
+  };
+}
+
+function rememberChord(chord){
+  state.recentChords = state.recentChords.filter(c => c !== chord);
+  state.recentChords.unshift(chord);
+  state.recentChords = state.recentChords.slice(0, 6);
+  renderRecentChords();
+  saveSettings();
+}
+
+function renderRecentChords(){
+  const grid = document.getElementById("recentChordGrid");
+  grid.innerHTML = "";
+
+  for(let i = 0; i < 6; i++){
+    const chord = state.recentChords[i];
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "quickChordBtn" + (chord ? "" : " empty");
+    btn.textContent = chord || "-";
+    btn.disabled = !chord;
+
+    if(chord){
+      btn.onclick = ()=>applyQuickChord(chord);
+    }
+
+    grid.appendChild(btn);
+  }
+}
+
 async function ensureAudio(){
   if(!state.audioCtx){
     state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -548,6 +620,7 @@ async function playChord(root, type){
 
     osc.type = "sine";
     osc.frequency.value = noteFreq(note);
+
     osc.connect(gain);
     gain.connect(state.audioCtx.destination);
 
@@ -683,6 +756,8 @@ async function addChordToTimeline(){
   const root = chord.match(/^[A-G][b#]?/)[0];
   const type = chord.replace(root, "").split("/")[0];
 
+  rememberChord(chord);
+
   await playChord(root, type);
   await playBass(root);
 
@@ -690,6 +765,32 @@ async function addChordToTimeline(){
     state.cursor++;
   }
   renderTimeline();
+}
+
+async function applyQuickChord(chord){
+  state.slots[state.cursor] = chord;
+
+  const parts = parseChordName(chord);
+  rootSel.value = parts.root;
+  typeSel.value = parts.type || "";
+  slashSel.value = parts.slash || "";
+
+  rememberChord(chord);
+  renderTimeline();
+
+  await playChord(parts.root, parts.type || "");
+  await playBass(parts.root);
+
+  if(state.cursor < state.slots.length - 1){
+    state.cursor++;
+  }
+  renderTimeline();
+}
+
+function wireQuickChordButtons(){
+  document.querySelectorAll(".quickChordBtn[data-chord]").forEach(btn=>{
+    btn.onclick = ()=>applyQuickChord(btn.dataset.chord);
+  });
 }
 
 function deleteChord(){
@@ -1081,6 +1182,8 @@ buildSelects();
 loadSettings();
 renderTimeline();
 drawWaveform();
+wireQuickChordButtons();
+renderRecentChords();
 </script>
 </body>
 </html>
