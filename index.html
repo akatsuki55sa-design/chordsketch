@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>HookPad current</title>
+<title>HookPad v7.2</title>
 <style>
 :root{
   --bg:#081226;
@@ -246,8 +246,8 @@ audio{
 </head>
 <body>
 <div class="app">
-  <h1>HookPad current</h1>
-  <p>録って、頭を合わせて、ルートを探して、コードを置く現状版。</p>
+  <h1>HookPad v7.2</h1>
+  <p>録って、頭を合わせて、ルートを探して、コードを置く現状版 + 波形グリッド + 録音中ライブ波形。</p>
 
   <div class="panel">
     <h2 style="margin:0 0 12px;">フック録音</h2>
@@ -319,7 +319,7 @@ audio{
       </div>
       <canvas id="waveCanvas" class="waveCanvas" width="900" height="128"></canvas>
       <div class="legend">
-        <div class="legendItem"><span class="swatch" style="background:#3bb7ff;"></span>波形</div>
+        <div class="legendItem"><span class="swatch" style="background:#3bb7ff;"></span>波形 / ライブ波形</div>
         <div class="legendItem"><span class="swatch" style="background:#ffc857;"></span>トリム位置</div>
         <div class="legendItem"><span class="swatch" style="background:#38d39f;"></span>実再生位置</div>
       </div>
@@ -474,7 +474,11 @@ const state = {
 
   recentChords: [],
 
-  isDraggingTrim: false
+  isDraggingTrim: false,
+
+  analyser: null,
+  liveDataArray: null,
+  liveRAF: null
 };
 
 function saveState(){
@@ -953,6 +957,15 @@ function clearLoopRaf(){
   }
 }
 
+function stopLiveWave(){
+  if(state.liveRAF){
+    cancelAnimationFrame(state.liveRAF);
+    state.liveRAF = null;
+  }
+  state.analyser = null;
+  state.liveDataArray = null;
+}
+
 function effectiveAudioStart(){
   const autoTrim = Number(autoTrimEl.value) || 0;
   const audioOffset = Number(audioOffsetEl.value) || 0;
@@ -1200,6 +1213,81 @@ function attachWavePointer(){
   });
 }
 
+function drawGrid(ctx, w, h, durationSec){
+  if(!durationSec) return;
+
+  const bpm = Number(bpmEl.value) || 120;
+  const beatSec = 60 / bpm;
+  const barSec = beatSec * 4;
+
+  ctx.strokeStyle = "rgba(255,255,255,0.08)";
+  ctx.lineWidth = 1;
+
+  for(let t = 0; t < durationSec; t += beatSec){
+    const x = (t / durationSec) * w;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, h);
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = "rgba(255,255,255,0.18)";
+  ctx.lineWidth = 2;
+
+  for(let t = 0; t < durationSec; t += barSec){
+    const x = (t / durationSec) * w;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, h);
+    ctx.stroke();
+  }
+}
+
+function drawLiveWaveform(){
+  if(!state.analyser || !state.liveDataArray) return;
+
+  const ctx = waveCanvas.getContext("2d");
+  const w = waveCanvas.width;
+  const h = waveCanvas.height;
+
+  state.analyser.getByteTimeDomainData(state.liveDataArray);
+
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle = "#0d1730";
+  ctx.fillRect(0,0,w,h);
+
+  // 仮グリッド（BPM基準の固定時間軸）
+  drawGrid(ctx, w, h, 4.0);
+
+  ctx.strokeStyle = "#243656";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, h / 2);
+  ctx.lineTo(w, h / 2);
+  ctx.stroke();
+
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = "#3bb7ff";
+  ctx.beginPath();
+
+  const slice = w / state.liveDataArray.length;
+  let x = 0;
+
+  for(let i = 0; i < state.liveDataArray.length; i++){
+    const v = state.liveDataArray[i] / 128.0;
+    const y = v * h / 2;
+    if(i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+    x += slice;
+  }
+  ctx.stroke();
+
+  waveInfo.textContent = "録音中ライブ波形";
+  if(state.mode === "recording"){
+    state.liveRAF = requestAnimationFrame(drawLiveWaveform);
+  }
+}
+
 function drawWaveform(){
   const ctx = waveCanvas.getContext("2d");
   const w = waveCanvas.width;
@@ -1209,19 +1297,28 @@ function drawWaveform(){
   ctx.fillStyle = "#0d1730";
   ctx.fillRect(0,0,w,h);
 
+  if(!state.waveformData || !state.waveformData.length || !state.waveformDuration){
+    ctx.strokeStyle = "#243656";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, h / 2);
+    ctx.lineTo(w, h / 2);
+    ctx.stroke();
+
+    ctx.fillStyle = "#8fa1c5";
+    ctx.font = "14px system-ui";
+    ctx.fillText("録音後に波形が表示されます", 20, 30);
+    return;
+  }
+
+  drawGrid(ctx, w, h, state.waveformDuration);
+
   ctx.strokeStyle = "#243656";
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(0, h / 2);
   ctx.lineTo(w, h / 2);
   ctx.stroke();
-
-  if(!state.waveformData || !state.waveformData.length || !state.waveformDuration){
-    ctx.fillStyle = "#8fa1c5";
-    ctx.font = "14px system-ui";
-    ctx.fillText("録音後に波形が表示されます", 20, 30);
-    return;
-  }
 
   const max = Math.max(...state.waveformData, 0.001);
   const step = w / state.waveformData.length;
@@ -1275,8 +1372,16 @@ async function startRecording(){
   try{
     await ensureAudio();
     recordStatus.textContent = "録音開始中…";
+
     state.mediaStream = await navigator.mediaDevices.getUserMedia({audio:true});
     state.recordedChunks = [];
+
+    const source = state.audioCtx.createMediaStreamSource(state.mediaStream);
+    state.analyser = state.audioCtx.createAnalyser();
+    state.analyser.fftSize = 1024;
+    state.liveDataArray = new Uint8Array(state.analyser.fftSize);
+    source.connect(state.analyser);
+
     state.mediaRecorder = new MediaRecorder(state.mediaStream);
 
     state.mediaRecorder.ondataavailable = (e)=>{
@@ -1284,6 +1389,8 @@ async function startRecording(){
     };
 
     state.mediaRecorder.onstop = async ()=>{
+      stopLiveWave();
+
       state.recordedBlob = new Blob(
         state.recordedChunks,
         { type: state.mediaRecorder.mimeType || "audio/webm" }
@@ -1311,7 +1418,10 @@ async function startRecording(){
     state.mediaRecorder.start();
     state.mode = "recording";
     recordStatus.textContent = "録音中…『録音停止』で止める。";
+
+    drawLiveWaveform();
   }catch(err){
+    stopLiveWave();
     state.mode = "idle";
     if(state.mediaStream){
       state.mediaStream.getTracks().forEach(t => t.stop());
@@ -1374,7 +1484,7 @@ typeSel.onchange = ()=>{ playChord(rootSel.value, typeSel.value); };
 slashSel.onchange = ()=>{ playChord(rootSel.value, typeSel.value); };
 keySelect.onchange = ()=>{ renderDiatonicChords(); saveState(); };
 
-bpmEl.addEventListener("change", saveState);
+bpmEl.addEventListener("change", ()=>{ saveState(); drawWaveform(); });
 autoTrimEl.addEventListener("change", ()=>{ saveState(); drawWaveform(); });
 audioOffsetEl.addEventListener("change", ()=>{ saveState(); drawWaveform(); });
 chordOffsetEl.addEventListener("change", saveState);
