@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>HookPad v7.2</title>
+<title>HookPad v7.3a</title>
 <style>
 :root{
   --bg:#081226;
@@ -238,6 +238,14 @@ audio{
   font-size:.82rem;
   margin-left:8px;
 }
+.compactField{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.compactField input{
+  width:88px;
+}
 @media (max-width:640px){
   .grid2,.grid3,.grid4{ grid-template-columns:1fr; }
   .quickChordGrid,.rootPadGrid{ grid-template-columns:repeat(3,minmax(0,1fr)); }
@@ -246,8 +254,8 @@ audio{
 </head>
 <body>
 <div class="app">
-  <h1>HookPad v7.2</h1>
-  <p>録って、頭を合わせて、ルートを探して、コードを置く現状版 + 波形グリッド + 録音中ライブ波形。</p>
+  <h1>HookPad v7.3a</h1>
+  <p>現状版 + 波形グリッド吸着。</p>
 
   <div class="panel">
     <h2 style="margin:0 0 12px;">フック録音</h2>
@@ -296,6 +304,17 @@ audio{
         <input id="clickToggle" type="checkbox" checked style="width:auto;margin-right:8px;" />
         クリック音を鳴らす
       </label>
+
+      <label>
+        <input id="snapToggle" type="checkbox" checked style="width:auto;margin-right:8px;" />
+        グリッド吸着
+      </label>
+
+      <div class="compactField">
+        <span class="small">吸着強度(px)</span>
+        <input id="snapStrength" type="number" value="12" min="4" max="40" step="1" />
+      </div>
+
       <span class="badge" id="headDetectLabel">頭出し: 未解析</span>
     </div>
 
@@ -419,6 +438,8 @@ const audioPlayer = document.getElementById("audioPlayer");
 const recordStatus = document.getElementById("recordStatus");
 const loopStatus = document.getElementById("loopStatus");
 const clickToggle = document.getElementById("clickToggle");
+const snapToggle = document.getElementById("snapToggle");
+const snapStrengthEl = document.getElementById("snapStrength");
 const warmupBtn = document.getElementById("warmupBtn");
 const metroBtn = document.getElementById("metroBtn");
 const startRecBtn = document.getElementById("startRecBtn");
@@ -488,6 +509,8 @@ function saveState(){
     audioOffset: audioOffsetEl.value,
     chordOffset: chordOffsetEl.value,
     click: clickToggle.checked,
+    snap: snapToggle.checked,
+    snapStrength: snapStrengthEl.value,
     loopStartBar: loopStartBarEl.value,
     loopEndBar: loopEndBarEl.value,
     recentChords: state.recentChords,
@@ -509,6 +532,8 @@ function loadState(){
     if(data.audioOffset !== undefined) audioOffsetEl.value = data.audioOffset;
     if(data.chordOffset !== undefined) chordOffsetEl.value = data.chordOffset;
     if(typeof data.click === "boolean") clickToggle.checked = data.click;
+    if(typeof data.snap === "boolean") snapToggle.checked = data.snap;
+    if(data.snapStrength !== undefined) snapStrengthEl.value = data.snapStrength;
     if(data.loopStartBar !== undefined) loopStartBarEl.value = data.loopStartBar;
     if(data.loopEndBar !== undefined) loopEndBarEl.value = data.loopEndBar;
     if(Array.isArray(data.recentChords)) state.recentChords = data.recentChords.slice(0, 6);
@@ -1171,9 +1196,40 @@ function trimFromCanvasX(clientX){
   return Math.max(0, Math.min(sec, state.waveformDuration || 0));
 }
 
+function snapTimeToGrid(sec){
+  if(!snapToggle.checked) return sec;
+
+  const duration = state.waveformDuration;
+  if(!duration) return sec;
+
+  const strength = Number(snapStrengthEl.value) || 12;
+  const bpm = Number(bpmEl.value) || 120;
+  const beatSec = 60 / bpm;
+  const canvasWidth = waveCanvas.getBoundingClientRect().width;
+  const pxPerSec = canvasWidth / duration;
+
+  let closest = sec;
+  let minDist = Infinity;
+
+  for(let t = 0; t < duration; t += beatSec){
+    const dist = Math.abs((t - sec) * pxPerSec);
+    if(dist < minDist){
+      minDist = dist;
+      closest = t;
+    }
+  }
+
+  if(minDist <= strength){
+    return closest;
+  }
+
+  return sec;
+}
+
 function setTrimFromPointer(clientX){
   if(!state.waveformDuration) return;
-  const sec = trimFromCanvasX(clientX);
+  let sec = trimFromCanvasX(clientX);
+  sec = snapTimeToGrid(sec);
   autoTrimEl.value = sec.toFixed(2);
   drawWaveform();
 }
@@ -1256,7 +1312,6 @@ function drawLiveWaveform(){
   ctx.fillStyle = "#0d1730";
   ctx.fillRect(0,0,w,h);
 
-  // 仮グリッド（BPM基準の固定時間軸）
   drawGrid(ctx, w, h, 4.0);
 
   ctx.strokeStyle = "#243656";
@@ -1489,6 +1544,8 @@ autoTrimEl.addEventListener("change", ()=>{ saveState(); drawWaveform(); });
 audioOffsetEl.addEventListener("change", ()=>{ saveState(); drawWaveform(); });
 chordOffsetEl.addEventListener("change", saveState);
 clickToggle.addEventListener("change", saveState);
+snapToggle.addEventListener("change", saveState);
+snapStrengthEl.addEventListener("change", saveState);
 loopStartBarEl.addEventListener("change", ()=>{ renderTimeline(); saveState(); });
 loopEndBarEl.addEventListener("change", ()=>{ renderTimeline(); saveState(); });
 lyricsEl.addEventListener("input", saveState);
