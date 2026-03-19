@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>HookPad v7.3a-2</title>
+<title>HookPad v7.4</title>
 <style>
 :root{
   --bg:#081226;
@@ -16,6 +16,7 @@
   --accent2:#8dd7ff;
   --ok:#38d39f;
   --warn:#ffc857;
+  --region:rgba(56,211,159,.14);
 }
 *{box-sizing:border-box}
 body{
@@ -279,8 +280,8 @@ audio{
 </head>
 <body>
 <div class="app">
-  <h1>HookPad v7.3a-2</h1>
-  <p>現状版 + 波形グリッド吸着UI改善 + 吸着単位選択。</p>
+  <h1>HookPad v7.4</h1>
+  <p>現状版 + リージョン帯ドラッグ対応。</p>
 
   <div class="panel">
     <h2 style="margin:0 0 12px;">フック録音</h2>
@@ -342,7 +343,7 @@ audio{
     <div class="status" id="recordStatus">ウォームアップ → 録音 → 頭を合わせる → ループでコード探し。</div>
     <audio id="audioPlayer" controls></audio>
     <div class="small" style="margin-top:8px;">
-      LOOP時の録音再生位置 = 自動トリム + 録音再生オフセット
+      黄色 = ソース内の頭出し / 緑 = 実際のリージョン位置
     </div>
 
     <div class="waveWrap">
@@ -380,12 +381,12 @@ audio{
 
       <div class="legend">
         <div class="legendItem"><span class="swatch" style="background:#3bb7ff;"></span>波形 / ライブ波形</div>
-        <div class="legendItem"><span class="swatch" style="background:#ffc857;"></span>トリム位置</div>
-        <div class="legendItem"><span class="swatch" style="background:#38d39f;"></span>実再生位置</div>
+        <div class="legendItem"><span class="swatch" style="background:#ffc857;"></span>頭出し位置</div>
+        <div class="legendItem"><span class="swatch" style="background:#38d39f;"></span>リージョン位置</div>
       </div>
 
       <div class="small" style="margin-top:8px;">
-        波形をタップ/ドラッグするとトリム位置を直接動かせる
+        黄色線ドラッグ = 頭出し変更 / 緑の帯ドラッグ = リージョン移動
       </div>
     </div>
   </div>
@@ -538,7 +539,7 @@ const state = {
 
   recentChords: [],
 
-  isDraggingTrim: false,
+  dragMode: null,
 
   analyser: null,
   liveDataArray: null,
@@ -1286,6 +1287,24 @@ function snapTimeToGrid(sec){
   return sec;
 }
 
+function hitTestDragMode(clientX){
+  if(!state.waveformDuration) return "trim";
+
+  const rect = waveCanvas.getBoundingClientRect();
+  const x = Math.max(0, Math.min(clientX - rect.left, rect.width));
+  const w = rect.width;
+
+  const trimSec = Math.max(0, Number(autoTrimEl.value) || 0);
+  const effectiveSec = effectiveAudioStart();
+
+  const trimX = (trimSec / state.waveformDuration) * w;
+  const regionX = (effectiveSec / state.waveformDuration) * w;
+
+  if(Math.abs(x - trimX) <= 14) return "trim";
+  if(x >= regionX) return "region";
+  return "trim";
+}
+
 function setTrimFromPointer(clientX){
   if(!state.waveformDuration) return;
   let sec = trimFromCanvasX(clientX);
@@ -1294,37 +1313,52 @@ function setTrimFromPointer(clientX){
   drawWaveform();
 }
 
+function setRegionFromPointer(clientX){
+  if(!state.waveformDuration) return;
+  let sec = trimFromCanvasX(clientX);
+  sec = snapTimeToGrid(sec);
+
+  const trimSec = Math.max(0, Number(autoTrimEl.value) || 0);
+  const newOffset = sec - trimSec;
+  audioOffsetEl.value = newOffset.toFixed(2);
+  drawWaveform();
+}
+
 function attachWavePointer(){
   waveCanvas.addEventListener("mousedown", (e)=>{
-    state.isDraggingTrim = true;
-    setTrimFromPointer(e.clientX);
+    state.dragMode = hitTestDragMode(e.clientX);
+    if(state.dragMode === "region") setRegionFromPointer(e.clientX);
+    else setTrimFromPointer(e.clientX);
   });
 
   window.addEventListener("mousemove", (e)=>{
-    if(!state.isDraggingTrim) return;
-    setTrimFromPointer(e.clientX);
+    if(!state.dragMode) return;
+    if(state.dragMode === "region") setRegionFromPointer(e.clientX);
+    else setTrimFromPointer(e.clientX);
   });
 
   window.addEventListener("mouseup", ()=>{
-    if(!state.isDraggingTrim) return;
-    state.isDraggingTrim = false;
+    if(!state.dragMode) return;
+    state.dragMode = null;
     saveState();
   });
 
   waveCanvas.addEventListener("touchstart", (e)=>{
     if(!e.touches.length) return;
-    state.isDraggingTrim = true;
-    setTrimFromPointer(e.touches[0].clientX);
+    state.dragMode = hitTestDragMode(e.touches[0].clientX);
+    if(state.dragMode === "region") setRegionFromPointer(e.touches[0].clientX);
+    else setTrimFromPointer(e.touches[0].clientX);
   }, {passive:true});
 
   window.addEventListener("touchmove", (e)=>{
-    if(!state.isDraggingTrim || !e.touches.length) return;
-    setTrimFromPointer(e.touches[0].clientX);
+    if(!state.dragMode || !e.touches.length) return;
+    if(state.dragMode === "region") setRegionFromPointer(e.touches[0].clientX);
+    else setTrimFromPointer(e.touches[0].clientX);
   }, {passive:true});
 
   window.addEventListener("touchend", ()=>{
-    if(!state.isDraggingTrim) return;
-    state.isDraggingTrim = false;
+    if(!state.dragMode) return;
+    state.dragMode = null;
     saveState();
   });
 }
@@ -1468,12 +1502,8 @@ function drawWaveform(){
   const trimX = Math.min(w, (trimSec / state.waveformDuration) * w);
   const effectiveX = Math.min(w, (effectiveSec / state.waveformDuration) * w);
 
-  ctx.strokeStyle = "#ffc857";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(trimX, 0);
-  ctx.lineTo(trimX, h);
-  ctx.stroke();
+  ctx.fillStyle = "rgba(56,211,159,0.14)";
+  ctx.fillRect(effectiveX, 0, Math.max(0, w - effectiveX), h);
 
   ctx.strokeStyle = "#38d39f";
   ctx.lineWidth = 2;
@@ -1482,10 +1512,17 @@ function drawWaveform(){
   ctx.lineTo(effectiveX, h);
   ctx.stroke();
 
+  ctx.strokeStyle = "#ffc857";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(trimX, 0);
+  ctx.lineTo(trimX, h);
+  ctx.stroke();
+
   ctx.fillStyle = "#8fa1c5";
   ctx.font = "12px system-ui";
   ctx.fillText(`長さ: ${state.waveformDuration.toFixed(2)} 秒`, 12, h - 10);
-  waveInfo.textContent = `長さ ${state.waveformDuration.toFixed(2)} 秒 / トリム ${trimSec.toFixed(2)} 秒 / 実再生 ${effectiveSec.toFixed(2)} 秒`;
+  waveInfo.textContent = `長さ ${state.waveformDuration.toFixed(2)} 秒 / 頭出し ${trimSec.toFixed(2)} 秒 / リージョン ${effectiveSec.toFixed(2)} 秒`;
 }
 
 async function startRecording(){
