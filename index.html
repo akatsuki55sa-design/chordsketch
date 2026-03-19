@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>HookPad v7.4</title>
+<title>HookPad v7.5</title>
 <style>
 :root{
   --bg:#081226;
@@ -16,7 +16,7 @@
   --accent2:#8dd7ff;
   --ok:#38d39f;
   --warn:#ffc857;
-  --region:rgba(56,211,159,.14);
+  --region:rgba(56,211,159,.18);
 }
 *{box-sizing:border-box}
 body{
@@ -207,6 +207,10 @@ audio{
   min-width:92px;
   padding:8px 10px;
 }
+.waveTool input[type="number"]{
+  width:76px;
+  padding:8px 10px;
+}
 .waveCanvas{
   width:100%;
   height:128px;
@@ -280,8 +284,8 @@ audio{
 </head>
 <body>
 <div class="app">
-  <h1>HookPad v7.4</h1>
-  <p>現状版 + リージョン帯ドラッグ対応。</p>
+  <h1>HookPad v7.5</h1>
+  <p>現状版 + 小節番号表示 + オーディオ塊ドラッグ。</p>
 
   <div class="panel">
     <h2 style="margin:0 0 12px;">フック録音</h2>
@@ -343,7 +347,7 @@ audio{
     <div class="status" id="recordStatus">ウォームアップ → 録音 → 頭を合わせる → ループでコード探し。</div>
     <audio id="audioPlayer" controls></audio>
     <div class="small" style="margin-top:8px;">
-      黄色 = ソース内の頭出し / 緑 = 実際のリージョン位置
+      黄色 = ソース内の頭出し / 緑の塊 = 実際のリージョン
     </div>
 
     <div class="waveWrap">
@@ -372,7 +376,7 @@ audio{
 
           <label class="waveTool">
             <span>強度(px)</span>
-            <input id="snapStrength" type="number" value="12" min="4" max="40" step="1" style="width:76px;" />
+            <input id="snapStrength" type="number" value="12" min="4" max="40" step="1" />
           </label>
         </div>
       </div>
@@ -382,11 +386,11 @@ audio{
       <div class="legend">
         <div class="legendItem"><span class="swatch" style="background:#3bb7ff;"></span>波形 / ライブ波形</div>
         <div class="legendItem"><span class="swatch" style="background:#ffc857;"></span>頭出し位置</div>
-        <div class="legendItem"><span class="swatch" style="background:#38d39f;"></span>リージョン位置</div>
+        <div class="legendItem"><span class="swatch" style="background:#38d39f;"></span>リージョン塊</div>
       </div>
 
       <div class="small" style="margin-top:8px;">
-        黄色線ドラッグ = 頭出し変更 / 緑の帯ドラッグ = リージョン移動
+        黄色線ドラッグ = 頭出し変更 / 緑の塊ドラッグ = リージョン移動
       </div>
     </div>
   </div>
@@ -1043,6 +1047,12 @@ function effectiveAudioStart(){
   return Math.max(0, autoTrim + audioOffset);
 }
 
+function getRegionLengthSec(){
+  if(!state.waveformDuration) return 0;
+  const effectiveSec = effectiveAudioStart();
+  return Math.max(0.2, state.waveformDuration - effectiveSec);
+}
+
 function stopLoop(){
   clearPendingChordTimeouts();
   clearPendingAudioTimeouts();
@@ -1165,6 +1175,7 @@ async function decodeBlobAndWaveform(blob){
 
   const ch = audioBuffer.getChannelData(0);
   state.audioBufferMono = ch.slice(0);
+  state.waveformDuration = audioBuffer.duration;
 
   const samples = 900;
   const blockSize = Math.floor(ch.length / samples) || 1;
@@ -1181,7 +1192,6 @@ async function decodeBlobAndWaveform(blob){
   }
 
   state.waveformData = data;
-  state.waveformDuration = audioBuffer.duration;
 
   await tempCtx.close();
   detectAudioHead();
@@ -1287,24 +1297,6 @@ function snapTimeToGrid(sec){
   return sec;
 }
 
-function hitTestDragMode(clientX){
-  if(!state.waveformDuration) return "trim";
-
-  const rect = waveCanvas.getBoundingClientRect();
-  const x = Math.max(0, Math.min(clientX - rect.left, rect.width));
-  const w = rect.width;
-
-  const trimSec = Math.max(0, Number(autoTrimEl.value) || 0);
-  const effectiveSec = effectiveAudioStart();
-
-  const trimX = (trimSec / state.waveformDuration) * w;
-  const regionX = (effectiveSec / state.waveformDuration) * w;
-
-  if(Math.abs(x - trimX) <= 14) return "trim";
-  if(x >= regionX) return "region";
-  return "trim";
-}
-
 function setTrimFromPointer(clientX){
   if(!state.waveformDuration) return;
   let sec = trimFromCanvasX(clientX);
@@ -1315,13 +1307,43 @@ function setTrimFromPointer(clientX){
 
 function setRegionFromPointer(clientX){
   if(!state.waveformDuration) return;
+
   let sec = trimFromCanvasX(clientX);
   sec = snapTimeToGrid(sec);
 
   const trimSec = Math.max(0, Number(autoTrimEl.value) || 0);
-  const newOffset = sec - trimSec;
+  const regionLen = getRegionLengthSec();
+  const maxStart = Math.max(0, state.waveformDuration - regionLen);
+  const clampedSec = Math.max(0, Math.min(sec, maxStart));
+
+  const newOffset = clampedSec - trimSec;
   audioOffsetEl.value = newOffset.toFixed(2);
   drawWaveform();
+}
+
+function getRegionBoundsPx(){
+  const rect = waveCanvas.getBoundingClientRect();
+  const w = rect.width;
+  const duration = state.waveformDuration || 0;
+  const regionStartSec = effectiveAudioStart();
+  const regionLenSec = getRegionLengthSec();
+  const startX = (regionStartSec / Math.max(duration, 0.0001)) * w;
+  const endX = ((regionStartSec + regionLenSec) / Math.max(duration, 0.0001)) * w;
+  return { startX, endX, width: w };
+}
+
+function hitTestDragMode(clientX){
+  if(!state.waveformDuration) return "trim";
+
+  const rect = waveCanvas.getBoundingClientRect();
+  const x = clientX - rect.left;
+  const trimSec = Math.max(0, Number(autoTrimEl.value) || 0);
+  const trimX = (trimSec / state.waveformDuration) * rect.width;
+  const region = getRegionBoundsPx();
+
+  if(Math.abs(x - trimX) <= 14) return "trim";
+  if(x >= region.startX && x <= region.endX) return "region";
+  return "trim";
 }
 
 function attachWavePointer(){
@@ -1404,6 +1426,23 @@ function drawGrid(ctx, w, h, durationSec){
   }
 }
 
+function drawBarNumbers(ctx, w, h, durationSec){
+  if(!durationSec) return;
+
+  const bpm = Number(bpmEl.value) || 120;
+  const barSec = (60 / bpm) * 4;
+
+  ctx.fillStyle = "#8fa1c5";
+  ctx.font = "11px system-ui";
+
+  let bar = 1;
+  for(let t = 0; t < durationSec; t += barSec){
+    const x = (t / durationSec) * w;
+    ctx.fillText(String(bar), x + 4, 12);
+    bar++;
+  }
+}
+
 function drawLiveWaveform(){
   if(!state.analyser || !state.liveDataArray) return;
 
@@ -1418,6 +1457,7 @@ function drawLiveWaveform(){
   ctx.fillRect(0,0,w,h);
 
   drawGrid(ctx, w, h, 4.0);
+  drawBarNumbers(ctx, w, h, 4.0);
 
   ctx.strokeStyle = "#243656";
   ctx.lineWidth = 1;
@@ -1472,6 +1512,7 @@ function drawWaveform(){
   }
 
   drawGrid(ctx, w, h, state.waveformDuration);
+  drawBarNumbers(ctx, w, h, state.waveformDuration);
 
   ctx.strokeStyle = "#243656";
   ctx.lineWidth = 1;
@@ -1497,20 +1538,19 @@ function drawWaveform(){
   ctx.stroke();
 
   const trimSec = Math.max(0, Number(autoTrimEl.value) || 0);
-  const effectiveSec = effectiveAudioStart();
+  const regionStartSec = effectiveAudioStart();
+  const regionLenSec = getRegionLengthSec();
 
   const trimX = Math.min(w, (trimSec / state.waveformDuration) * w);
-  const effectiveX = Math.min(w, (effectiveSec / state.waveformDuration) * w);
+  const regionX = Math.min(w, (regionStartSec / state.waveformDuration) * w);
+  const regionW = Math.max(6, Math.min(w - regionX, (regionLenSec / state.waveformDuration) * w));
 
-  ctx.fillStyle = "rgba(56,211,159,0.14)";
-  ctx.fillRect(effectiveX, 0, Math.max(0, w - effectiveX), h);
+  ctx.fillStyle = "rgba(56,211,159,0.18)";
+  ctx.fillRect(regionX, 0, regionW, h);
 
   ctx.strokeStyle = "#38d39f";
   ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(effectiveX, 0);
-  ctx.lineTo(effectiveX, h);
-  ctx.stroke();
+  ctx.strokeRect(regionX, 0, regionW, h);
 
   ctx.strokeStyle = "#ffc857";
   ctx.lineWidth = 2;
@@ -1522,7 +1562,7 @@ function drawWaveform(){
   ctx.fillStyle = "#8fa1c5";
   ctx.font = "12px system-ui";
   ctx.fillText(`長さ: ${state.waveformDuration.toFixed(2)} 秒`, 12, h - 10);
-  waveInfo.textContent = `長さ ${state.waveformDuration.toFixed(2)} 秒 / 頭出し ${trimSec.toFixed(2)} 秒 / リージョン ${effectiveSec.toFixed(2)} 秒`;
+  waveInfo.textContent = `長さ ${state.waveformDuration.toFixed(2)} 秒 / 頭出し ${trimSec.toFixed(2)} 秒 / リージョン ${regionStartSec.toFixed(2)} 秒`;
 }
 
 async function startRecording(){
