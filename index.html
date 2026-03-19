@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>HookPad v7.6</title>
+<title>HookPad v7.7</title>
 <style>
 :root{
   --bg:#081226;
@@ -276,8 +276,8 @@ audio{
 </head>
 <body>
 <div class="app">
-  <h1>HookPad v7.6</h1>
-  <p>現状版 + 本物寄りリージョンドラッグ + リージョン内波形。</p>
+  <h1>HookPad v7.7</h1>
+  <p>現状版 + 触る対象が分かりやすいUI。</p>
 
   <div class="panel">
     <h2 style="margin:0 0 12px;">フック録音</h2>
@@ -537,6 +537,7 @@ const state = {
 
   dragMode: null,
   regionDragOffsetSec: 0,
+  hoverMode: null,
 
   analyser: null,
   liveDataArray: null,
@@ -1342,10 +1343,43 @@ function hitTestDragMode(clientX){
 
   if(Math.abs(x - trimX) <= 14) return "trim";
   if(x >= region.startX && x <= region.endX) return "region";
-  return "trim";
+  return null;
+}
+
+function updateWaveCursor(mode){
+  if(state.dragMode === "region"){
+    waveCanvas.style.cursor = "grabbing";
+    return;
+  }
+  if(state.dragMode === "trim"){
+    waveCanvas.style.cursor = "ew-resize";
+    return;
+  }
+  if(mode === "region"){
+    waveCanvas.style.cursor = "grab";
+    return;
+  }
+  if(mode === "trim"){
+    waveCanvas.style.cursor = "ew-resize";
+    return;
+  }
+  waveCanvas.style.cursor = "default";
 }
 
 function attachWavePointer(){
+  waveCanvas.addEventListener("mousemove", (e)=>{
+    if(state.dragMode) return;
+    state.hoverMode = hitTestDragMode(e.clientX);
+    updateWaveCursor(state.hoverMode);
+  });
+
+  waveCanvas.addEventListener("mouseleave", ()=>{
+    if(state.dragMode) return;
+    state.hoverMode = null;
+    updateWaveCursor(null);
+    drawWaveform();
+  });
+
   waveCanvas.addEventListener("mousedown", (e)=>{
     state.dragMode = hitTestDragMode(e.clientX);
 
@@ -1353,8 +1387,10 @@ function attachWavePointer(){
       const pointerSec = trimFromCanvasX(e.clientX);
       state.regionDragOffsetSec = pointerSec - effectiveAudioStart();
       if(state.regionDragOffsetSec < 0) state.regionDragOffsetSec = 0;
+      updateWaveCursor("region");
       setRegionFromPointer(e.clientX);
-    }else{
+    }else if(state.dragMode === "trim"){
+      updateWaveCursor("trim");
       setTrimFromPointer(e.clientX);
     }
   });
@@ -1362,14 +1398,16 @@ function attachWavePointer(){
   window.addEventListener("mousemove", (e)=>{
     if(!state.dragMode) return;
     if(state.dragMode === "region") setRegionFromPointer(e.clientX);
-    else setTrimFromPointer(e.clientX);
+    else if(state.dragMode === "trim") setTrimFromPointer(e.clientX);
   });
 
   window.addEventListener("mouseup", ()=>{
     if(!state.dragMode) return;
     state.dragMode = null;
     state.regionDragOffsetSec = 0;
+    updateWaveCursor(state.hoverMode);
     saveState();
+    drawWaveform();
   });
 
   waveCanvas.addEventListener("touchstart", (e)=>{
@@ -1381,7 +1419,7 @@ function attachWavePointer(){
       state.regionDragOffsetSec = pointerSec - effectiveAudioStart();
       if(state.regionDragOffsetSec < 0) state.regionDragOffsetSec = 0;
       setRegionFromPointer(e.touches[0].clientX);
-    }else{
+    }else if(state.dragMode === "trim"){
       setTrimFromPointer(e.touches[0].clientX);
     }
   }, {passive:true});
@@ -1389,7 +1427,7 @@ function attachWavePointer(){
   window.addEventListener("touchmove", (e)=>{
     if(!state.dragMode || !e.touches.length) return;
     if(state.dragMode === "region") setRegionFromPointer(e.touches[0].clientX);
-    else setTrimFromPointer(e.touches[0].clientX);
+    else if(state.dragMode === "trim") setTrimFromPointer(e.touches[0].clientX);
   }, {passive:true});
 
   window.addEventListener("touchend", ()=>{
@@ -1397,6 +1435,7 @@ function attachWavePointer(){
     state.dragMode = null;
     state.regionDragOffsetSec = 0;
     saveState();
+    drawWaveform();
   });
 }
 
@@ -1456,6 +1495,20 @@ function drawBarNumbers(ctx, w, h, durationSec){
     ctx.fillText(String(bar), x + 4, 12);
     bar++;
   }
+}
+
+function drawLabel(ctx, text, x, y, bg, fg="#081226"){
+  const padX = 6;
+  const padY = 3;
+  ctx.font = "11px system-ui";
+  const metrics = ctx.measureText(text);
+  const width = metrics.width + padX * 2;
+  const height = 18;
+
+  ctx.fillStyle = bg;
+  ctx.fillRect(x, y, width, height);
+  ctx.fillStyle = fg;
+  ctx.fillText(text, x + padX, y + 12);
 }
 
 function drawLiveWaveform(){
@@ -1607,21 +1660,36 @@ function drawWaveform(){
   const regionX = Math.min(w, (regionStartSec / state.waveformDuration) * w);
   const regionW = Math.max(6, Math.min(w - regionX, (regionLenSec / state.waveformDuration) * w));
 
-  ctx.fillStyle = "rgba(56,211,159,0.18)";
+  let regionFill = "rgba(56,211,159,0.18)";
+  let regionStroke = "#38d39f";
+  let trimStroke = "#ffc857";
+
+  if(state.hoverMode === "region") regionFill = "rgba(56,211,159,0.24)";
+  if(state.dragMode === "region"){
+    regionFill = "rgba(56,211,159,0.30)";
+    regionStroke = "#72ffd0";
+  }
+  if(state.hoverMode === "trim") trimStroke = "#ffd56a";
+  if(state.dragMode === "trim") trimStroke = "#fff1a6";
+
+  ctx.fillStyle = regionFill;
   ctx.fillRect(regionX, 0, regionW, h);
 
   drawRegionWaveform(ctx, w, h);
 
-  ctx.strokeStyle = "#38d39f";
+  ctx.strokeStyle = regionStroke;
   ctx.lineWidth = 2;
   ctx.strokeRect(regionX, 0, regionW, h);
 
-  ctx.strokeStyle = "#ffc857";
+  ctx.strokeStyle = trimStroke;
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(trimX, 0);
   ctx.lineTo(trimX, h);
   ctx.stroke();
+
+  drawLabel(ctx, "リージョン", Math.min(regionX + 4, w - 70), 16, regionStroke, "#081226");
+  drawLabel(ctx, "頭出し", Math.min(trimX + 4, w - 56), 36, trimStroke, "#081226");
 
   ctx.fillStyle = "#8fa1c5";
   ctx.font = "12px system-ui";
