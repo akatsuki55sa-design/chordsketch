@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>HookPad v7.5</title>
+<title>HookPad v7.6</title>
 <style>
 :root{
   --bg:#081226;
@@ -16,7 +16,6 @@
   --accent2:#8dd7ff;
   --ok:#38d39f;
   --warn:#ffc857;
-  --region:rgba(56,211,159,.18);
 }
 *{box-sizing:border-box}
 body{
@@ -56,16 +55,9 @@ button{
   color:#fff;
 }
 button:active{ transform:scale(.99); }
-button.ok{
-  background:#194734;
-  border-color:#2c9f73;
-}
 button.warn{
   background:#4a3820;
   border-color:#9b6b1d;
-}
-button.ghost{
-  background:#16253f;
 }
 input,select,textarea{
   width:100%;
@@ -284,8 +276,8 @@ audio{
 </head>
 <body>
 <div class="app">
-  <h1>HookPad v7.5</h1>
-  <p>現状版 + 小節番号表示 + オーディオ塊ドラッグ。</p>
+  <h1>HookPad v7.6</h1>
+  <p>現状版 + 本物寄りリージョンドラッグ + リージョン内波形。</p>
 
   <div class="panel">
     <h2 style="margin:0 0 12px;">フック録音</h2>
@@ -544,10 +536,13 @@ const state = {
   recentChords: [],
 
   dragMode: null,
+  regionDragOffsetSec: 0,
 
   analyser: null,
   liveDataArray: null,
-  liveRAF: null
+  liveRAF: null,
+  liveWriteX: 0,
+  liveTrail: []
 };
 
 function saveState(){
@@ -1039,6 +1034,8 @@ function stopLiveWave(){
   }
   state.analyser = null;
   state.liveDataArray = null;
+  state.liveTrail = [];
+  state.liveWriteX = 0;
 }
 
 function effectiveAudioStart(){
@@ -1314,9 +1311,11 @@ function setRegionFromPointer(clientX){
   const trimSec = Math.max(0, Number(autoTrimEl.value) || 0);
   const regionLen = getRegionLengthSec();
   const maxStart = Math.max(0, state.waveformDuration - regionLen);
-  const clampedSec = Math.max(0, Math.min(sec, maxStart));
 
-  const newOffset = clampedSec - trimSec;
+  let newRegionStart = sec - state.regionDragOffsetSec;
+  newRegionStart = Math.max(0, Math.min(newRegionStart, maxStart));
+
+  const newOffset = newRegionStart - trimSec;
   audioOffsetEl.value = newOffset.toFixed(2);
   drawWaveform();
 }
@@ -1324,11 +1323,11 @@ function setRegionFromPointer(clientX){
 function getRegionBoundsPx(){
   const rect = waveCanvas.getBoundingClientRect();
   const w = rect.width;
-  const duration = state.waveformDuration || 0;
+  const duration = Math.max(state.waveformDuration, 0.0001);
   const regionStartSec = effectiveAudioStart();
   const regionLenSec = getRegionLengthSec();
-  const startX = (regionStartSec / Math.max(duration, 0.0001)) * w;
-  const endX = ((regionStartSec + regionLenSec) / Math.max(duration, 0.0001)) * w;
+  const startX = (regionStartSec / duration) * w;
+  const endX = ((regionStartSec + regionLenSec) / duration) * w;
   return { startX, endX, width: w };
 }
 
@@ -1349,8 +1348,15 @@ function hitTestDragMode(clientX){
 function attachWavePointer(){
   waveCanvas.addEventListener("mousedown", (e)=>{
     state.dragMode = hitTestDragMode(e.clientX);
-    if(state.dragMode === "region") setRegionFromPointer(e.clientX);
-    else setTrimFromPointer(e.clientX);
+
+    if(state.dragMode === "region"){
+      const pointerSec = trimFromCanvasX(e.clientX);
+      state.regionDragOffsetSec = pointerSec - effectiveAudioStart();
+      if(state.regionDragOffsetSec < 0) state.regionDragOffsetSec = 0;
+      setRegionFromPointer(e.clientX);
+    }else{
+      setTrimFromPointer(e.clientX);
+    }
   });
 
   window.addEventListener("mousemove", (e)=>{
@@ -1362,14 +1368,22 @@ function attachWavePointer(){
   window.addEventListener("mouseup", ()=>{
     if(!state.dragMode) return;
     state.dragMode = null;
+    state.regionDragOffsetSec = 0;
     saveState();
   });
 
   waveCanvas.addEventListener("touchstart", (e)=>{
     if(!e.touches.length) return;
     state.dragMode = hitTestDragMode(e.touches[0].clientX);
-    if(state.dragMode === "region") setRegionFromPointer(e.touches[0].clientX);
-    else setTrimFromPointer(e.touches[0].clientX);
+
+    if(state.dragMode === "region"){
+      const pointerSec = trimFromCanvasX(e.touches[0].clientX);
+      state.regionDragOffsetSec = pointerSec - effectiveAudioStart();
+      if(state.regionDragOffsetSec < 0) state.regionDragOffsetSec = 0;
+      setRegionFromPointer(e.touches[0].clientX);
+    }else{
+      setTrimFromPointer(e.touches[0].clientX);
+    }
   }, {passive:true});
 
   window.addEventListener("touchmove", (e)=>{
@@ -1381,6 +1395,7 @@ function attachWavePointer(){
   window.addEventListener("touchend", ()=>{
     if(!state.dragMode) return;
     state.dragMode = null;
+    state.regionDragOffsetSec = 0;
     saveState();
   });
 }
@@ -1452,6 +1467,16 @@ function drawLiveWaveform(){
 
   state.analyser.getByteTimeDomainData(state.liveDataArray);
 
+  let sum = 0;
+  for(let i = 0; i < state.liveDataArray.length; i++){
+    sum += Math.abs(state.liveDataArray[i] - 128);
+  }
+  const avg = sum / state.liveDataArray.length / 128;
+  const yAmp = Math.max(1, avg * (h * 0.46));
+
+  state.liveTrail.push(yAmp);
+  if(state.liveTrail.length > w) state.liveTrail.shift();
+
   ctx.clearRect(0,0,w,h);
   ctx.fillStyle = "#0d1730";
   ctx.fillRect(0,0,w,h);
@@ -1466,26 +1491,63 @@ function drawLiveWaveform(){
   ctx.lineTo(w, h / 2);
   ctx.stroke();
 
-  ctx.lineWidth = 2;
   ctx.strokeStyle = "#3bb7ff";
+  ctx.lineWidth = 1.2;
   ctx.beginPath();
 
-  const slice = w / state.liveDataArray.length;
-  let x = 0;
-
-  for(let i = 0; i < state.liveDataArray.length; i++){
-    const v = state.liveDataArray[i] / 128.0;
-    const y = v * h / 2;
-    if(i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-    x += slice;
+  const startX = Math.max(0, w - state.liveTrail.length);
+  for(let i = 0; i < state.liveTrail.length; i++){
+    const x = startX + i;
+    const amp = state.liveTrail[i];
+    ctx.moveTo(x, h / 2 - amp);
+    ctx.lineTo(x, h / 2 + amp);
   }
+  ctx.stroke();
+
+  const playX = Math.min(w - 2, startX + state.liveTrail.length);
+  ctx.strokeStyle = "#8dd7ff";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(playX, 0);
+  ctx.lineTo(playX, h);
   ctx.stroke();
 
   waveInfo.textContent = "録音中ライブ波形";
   if(state.mode === "recording"){
     state.liveRAF = requestAnimationFrame(drawLiveWaveform);
   }
+}
+
+function drawRegionWaveform(ctx, w, h){
+  if(!state.waveformData || !state.waveformData.length || !state.waveformDuration) return;
+
+  const regionStartSec = effectiveAudioStart();
+  const regionLenSec = getRegionLengthSec();
+
+  const startRatio = regionStartSec / state.waveformDuration;
+  const endRatio = Math.min(1, (regionStartSec + regionLenSec) / state.waveformDuration);
+
+  const startIndex = Math.floor(startRatio * state.waveformData.length);
+  const endIndex = Math.max(startIndex + 1, Math.floor(endRatio * state.waveformData.length));
+
+  const regionX = (regionStartSec / state.waveformDuration) * w;
+  const regionW = Math.max(6, ((regionLenSec) / state.waveformDuration) * w);
+
+  const sliceCount = Math.max(1, endIndex - startIndex);
+  const step = regionW / sliceCount;
+
+  ctx.strokeStyle = "#8df5c8";
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+
+  for(let i = 0; i < sliceCount; i++){
+    const amp = state.waveformData[startIndex + i] || 0;
+    const barH = amp * (h * 0.42);
+    const x = regionX + (i * step);
+    ctx.moveTo(x, h / 2 - barH);
+    ctx.lineTo(x, h / 2 + barH);
+  }
+  ctx.stroke();
 }
 
 function drawWaveform(){
@@ -1525,12 +1587,12 @@ function drawWaveform(){
   const step = w / state.waveformData.length;
 
   ctx.strokeStyle = "#3bb7ff";
-  ctx.lineWidth = 1.2;
+  ctx.lineWidth = 1.0;
   ctx.beginPath();
 
   for(let i = 0; i < state.waveformData.length; i++){
     const v = state.waveformData[i] / max;
-    const barH = v * (h * 0.42);
+    const barH = v * (h * 0.32);
     const x = i * step;
     ctx.moveTo(x, h / 2 - barH);
     ctx.lineTo(x, h / 2 + barH);
@@ -1547,6 +1609,8 @@ function drawWaveform(){
 
   ctx.fillStyle = "rgba(56,211,159,0.18)";
   ctx.fillRect(regionX, 0, regionW, h);
+
+  drawRegionWaveform(ctx, w, h);
 
   ctx.strokeStyle = "#38d39f";
   ctx.lineWidth = 2;
@@ -1578,6 +1642,8 @@ async function startRecording(){
 
     state.mediaStream = await navigator.mediaDevices.getUserMedia({audio:true});
     state.recordedChunks = [];
+    state.liveTrail = [];
+    state.liveWriteX = 0;
 
     const source = state.audioCtx.createMediaStreamSource(state.mediaStream);
     state.analyser = state.audioCtx.createAnalyser();
