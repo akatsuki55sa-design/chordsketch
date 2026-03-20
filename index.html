@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>HookPad v9 - mini DAW + chord pad</title>
+<title>HookPad v10 - click + time signature</title>
 <style>
 :root{
   --bg:#081226;
@@ -193,6 +193,13 @@ label{
   font-size:12px;
   color:var(--accent2);
 }
+.beat-sub-line{
+  position:absolute;
+  top:0;
+  bottom:0;
+  width:1px;
+  background:rgba(255,255,255,.07);
+}
 .playhead{
   position:absolute;
   top:0;
@@ -332,10 +339,22 @@ label{
       <button id="playBtn" class="primary">▶ 再生</button>
       <button id="pauseBtn">⏸ 一時停止</button>
       <button id="deleteBtn">選択クリップ削除</button>
+      <button id="clickBtn" class="slim">♪ クリック ON</button>
 
       <div>
         <label for="bpm">BPM</label>
         <input id="bpm" type="number" min="40" max="240" value="120" style="width:90px">
+      </div>
+
+      <div>
+        <label for="timeSig">拍子</label>
+        <select id="timeSig">
+          <option value="4/4" selected>4/4</option>
+          <option value="3/4">3/4</option>
+          <option value="6/8">6/8</option>
+          <option value="5/4">5/4</option>
+          <option value="7/8">7/8</option>
+        </select>
       </div>
 
       <div>
@@ -349,6 +368,7 @@ label{
           <option value="1">1拍</option>
           <option value="0.5">1/2拍</option>
           <option value="0.25">1/4拍</option>
+          <option value="0.125">1/8拍</option>
           <option value="0">なし</option>
         </select>
       </div>
@@ -364,6 +384,8 @@ label{
         <div class="panel" style="padding:12px;">
           <div class="stat"><span>状態</span><strong id="statusText">待機中</strong></div>
           <div class="stat"><span>現在位置</span><strong id="posText">1:1</strong></div>
+          <div class="stat"><span>拍子</span><strong id="sigText">4/4</strong></div>
+          <div class="stat"><span>クリック</span><strong id="clickText">ON</strong></div>
           <div class="stat"><span>選択クリップ</span><strong id="selText">なし</strong></div>
           <div class="stat"><span>録音数</span><strong id="countText">0</strong></div>
           <div class="stat"><span>現在コード</span><strong id="currentChordMini">-</strong></div>
@@ -372,7 +394,7 @@ label{
         <div class="panel" style="padding:12px;">
           <div class="small">コードパッド</div>
           <div class="current-chord" id="currentChordDisplay">C</div>
-          <div class="small" style="margin:6px 0 10px;">選択クリップがあればその中に、なければ現在位置にコードを置く。</div>
+          <div class="small" style="margin:6px 0 10px;">選択クリップがあればその中にコードを置く。</div>
 
           <label>Root</label>
           <div class="grid12" id="rootButtons"></div>
@@ -392,11 +414,12 @@ label{
         <div class="panel" style="padding:12px;">
           <div class="info">
             使い方<br>
+            ・<span class="kbd">クリック ON</span>でメトロノーム再生<br>
+            ・3/4、6/8 などは拍子変更から切替<br>
             ・<span class="kbd">録音</span>で新規クリップ作成<br>
             ・クリップ本体をドラッグで移動<br>
             ・左右端をドラッグで長さ変更<br>
-            ・コードパッドで選択中クリップにコードを貼る<br>
-            ・再生ヘッドはタイムラインをクリックで移動
+            ・コードパッドで選択中クリップにコードを貼る
           </div>
         </div>
       </div>
@@ -414,7 +437,7 @@ label{
     </div>
 
     <div class="footer-note">
-      v9ではコードパッドを復活。選択中クリップに対してコードを紐づけて、上のレーンに見えるようにしてある。
+      v10: クリック復活。拍子変更対応。3/4 と 6/8 を含む可変拍子で小節線とクリックが切り替わる。
     </div>
   </div>
 </div>
@@ -434,9 +457,19 @@ const QUALITIES = [
   {id:"dim",label:"dim"}
 ];
 
+const TIME_SIGNATURES = {
+  "4/4": { beatsPerBar: 4, beatUnit: 4, clickGroup: [1,0,0,0] },
+  "3/4": { beatsPerBar: 3, beatUnit: 4, clickGroup: [1,0,0] },
+  "6/8": { beatsPerBar: 6, beatUnit: 8, clickGroup: [1,0,0,1,0,0] },
+  "5/4": { beatsPerBar: 5, beatUnit: 4, clickGroup: [1,0,0,0,0] },
+  "7/8": { beatsPerBar: 7, beatUnit: 8, clickGroup: [1,0,0,1,0,0,0] }
+};
+
 const state = {
   bpm:120,
+  timeSig:"4/4",
   beatsPerBar:4,
+  beatUnit:4,
   bars:16,
   beatPx:80,
   trackTopOffset:100,
@@ -449,11 +482,13 @@ const state = {
   recChunks:[],
   isRecording:false,
   isPlaying:false,
+  currentSongTime:0,
   playStartAudioTime:0,
   playStartSongTime:0,
-  currentSongTime:0,
   rafId:null,
-  drag:null
+  drag:null,
+  clickEnabled:true,
+  clickNodes:[]
 };
 
 const els = {
@@ -467,12 +502,16 @@ const els = {
   playBtn:document.getElementById('playBtn'),
   pauseBtn:document.getElementById('pauseBtn'),
   deleteBtn:document.getElementById('deleteBtn'),
+  clickBtn:document.getElementById('clickBtn'),
   bpm:document.getElementById('bpm'),
+  timeSig:document.getElementById('timeSig'),
   bars:document.getElementById('bars'),
   snap:document.getElementById('snap'),
   zoom:document.getElementById('zoom'),
   statusText:document.getElementById('statusText'),
   posText:document.getElementById('posText'),
+  sigText:document.getElementById('sigText'),
+  clickText:document.getElementById('clickText'),
   selText:document.getElementById('selText'),
   countText:document.getElementById('countText'),
   currentChordDisplay:document.getElementById('currentChordDisplay'),
@@ -486,29 +525,38 @@ const els = {
   tracks:[...document.querySelectorAll('.track')]
 };
 
-const secPerBeat = () => 60 / state.bpm;
-const beatsToPx = b => b * state.beatPx;
-const pxToBeats = px => px / state.beatPx;
-const songDurationSec = () => state.bars * state.beatsPerBar * secPerBeat();
-const timeToX = sec => beatsToPx(sec / secPerBeat());
-const xToTime = x => pxToBeats(x) * secPerBeat();
-const clamp = (v,min,max) => Math.max(min,Math.min(max,v));
-const chordText = (r,q) => r + q;
+function applyTimeSignature(){
+  const cfg = TIME_SIGNATURES[state.timeSig];
+  state.beatsPerBar = cfg.beatsPerBar;
+  state.beatUnit = cfg.beatUnit;
+}
 
-const snapBeats = v => {
+function secPerBeat(){
+  if (state.beatUnit === 8) return 30 / state.bpm;
+  return 60 / state.bpm;
+}
+function beatsToPx(b){ return b * state.beatPx; }
+function pxToBeats(px){ return px / state.beatPx; }
+function songDurationSec(){ return state.bars * state.beatsPerBar * secPerBeat(); }
+function timeToX(sec){ return beatsToPx(sec / secPerBeat()); }
+function xToTime(x){ return pxToBeats(x) * secPerBeat(); }
+function clamp(v,min,max){ return Math.max(min,Math.min(max,v)); }
+function chordText(r,q){ return r + q; }
+function snapBeats(v){
   const s = parseFloat(els.snap.value);
-  return s ? Math.round(v/s)*s : v;
-};
-
-const snapTime = sec => snapBeats(sec / secPerBeat()) * secPerBeat();
-
-const formatPos = sec => {
+  return s ? Math.round(v/s) * s : v;
+}
+function snapTime(sec){
+  return snapBeats(sec / secPerBeat()) * secPerBeat();
+}
+function formatPos(sec){
   const totalBeats = sec / secPerBeat();
-  return `${Math.floor(totalBeats/state.beatsPerBar)+1}:${Math.floor(totalBeats%state.beatsPerBar)+1}`;
-};
-
-const setStatus = txt => els.statusText.textContent = txt;
-const selectedClip = () => state.clips.find(c => c.id === state.selectedClipId) || null;
+  const bar = Math.floor(totalBeats / state.beatsPerBar) + 1;
+  const beat = Math.floor(totalBeats % state.beatsPerBar) + 1;
+  return `${bar}:${beat}`;
+}
+function setStatus(txt){ els.statusText.textContent = txt; }
+function selectedClip(){ return state.clips.find(c => c.id === state.selectedClipId) || null; }
 
 function currentChordAt(sec){
   const clip = state.clips.find(c => sec >= c.startTime && sec < c.startTime + c.duration);
@@ -524,8 +572,12 @@ function currentChordAt(sec){
 
 function updateReadout(){
   els.posText.textContent = formatPos(state.currentSongTime);
+  els.sigText.textContent = state.timeSig;
+  els.clickText.textContent = state.clickEnabled ? "ON" : "OFF";
+  els.clickBtn.textContent = state.clickEnabled ? "♪ クリック ON" : "♪ クリック OFF";
+  els.clickBtn.classList.toggle("active", state.clickEnabled);
   const sel = selectedClip();
-  els.selText.textContent = sel ? sel.name : 'なし';
+  els.selText.textContent = sel ? sel.name : "なし";
   els.countText.textContent = String(state.clips.length);
   els.currentChordMini.textContent = currentChordAt(state.currentSongTime);
 }
@@ -570,11 +622,15 @@ function renderChordPadState(){
 
 function updateTimelineSize(){
   state.bpm = Number(els.bpm.value) || 120;
+  state.timeSig = els.timeSig.value;
   state.bars = Number(els.bars.value) || 16;
   state.beatPx = Number(els.zoom.value) || 80;
+  applyTimeSignature();
+
   const totalBeats = state.bars * state.beatsPerBar;
-  els.timeline.style.setProperty('--beatPx', `${state.beatPx}px`);
+  els.timeline.style.setProperty("--beatPx", `${state.beatPx}px`);
   els.timeline.style.width = `${beatsToPx(totalBeats)}px`;
+
   renderRuler();
   renderAll();
   updatePlayhead();
@@ -582,21 +638,29 @@ function updateTimelineSize(){
 }
 
 function renderRuler(){
-  els.ruler.innerHTML = '';
-  for(let i=0;i<=state.bars;i++){
-    const x = beatsToPx(i * state.beatsPerBar);
+  els.ruler.innerHTML = "";
+  for(let bar=0; bar<=state.bars; bar++){
+    const x = beatsToPx(bar * state.beatsPerBar);
 
-    const line = document.createElement('div');
-    line.className = 'measure-line';
+    const line = document.createElement("div");
+    line.className = "measure-line";
     line.style.left = `${x}px`;
     els.ruler.appendChild(line);
 
-    if(i < state.bars){
-      const label = document.createElement('div');
-      label.className = 'measure-label';
+    if(bar < state.bars){
+      const label = document.createElement("div");
+      label.className = "measure-label";
       label.style.left = `${x}px`;
-      label.textContent = `${i+1}`;
+      label.textContent = `${bar + 1}`;
       els.ruler.appendChild(label);
+
+      for(let beat=1; beat<state.beatsPerBar; beat++){
+        const bx = beatsToPx(bar * state.beatsPerBar + beat);
+        const sub = document.createElement("div");
+        sub.className = "beat-sub-line";
+        sub.style.left = `${bx}px`;
+        els.ruler.appendChild(sub);
+      }
     }
   }
 }
@@ -604,25 +668,43 @@ function renderRuler(){
 function clearTrackDecorations(){
   els.chordLane.innerHTML = "";
   els.tracks.forEach(track => {
-    [...track.querySelectorAll('.measure-line,.clip,.ghost')].forEach(el => el.remove());
+    [...track.querySelectorAll(".measure-line,.beat-sub-line,.clip,.ghost")].forEach(el => el.remove());
   });
 }
 
 function renderGridLines(){
-  for(let i=0;i<=state.bars;i++){
-    const x = beatsToPx(i * state.beatsPerBar);
+  for(let bar=0; bar<=state.bars; bar++){
+    const x = beatsToPx(bar * state.beatsPerBar);
 
-    const cl = document.createElement('div');
-    cl.className = 'measure-line';
+    const cl = document.createElement("div");
+    cl.className = "measure-line";
     cl.style.left = `${x}px`;
     els.chordLane.appendChild(cl);
 
     els.tracks.forEach(track => {
-      const tl = document.createElement('div');
-      tl.className = 'measure-line';
+      const tl = document.createElement("div");
+      tl.className = "measure-line";
       tl.style.left = `${x}px`;
       track.appendChild(tl);
     });
+
+    if(bar < state.bars){
+      for(let beat=1; beat<state.beatsPerBar; beat++){
+        const bx = beatsToPx(bar * state.beatsPerBar + beat);
+
+        const csub = document.createElement("div");
+        csub.className = "beat-sub-line";
+        csub.style.left = `${bx}px`;
+        els.chordLane.appendChild(csub);
+
+        els.tracks.forEach(track => {
+          const sub = document.createElement("div");
+          sub.className = "beat-sub-line";
+          sub.style.left = `${bx}px`;
+          track.appendChild(sub);
+        });
+      }
+    }
   }
 }
 
@@ -643,12 +725,7 @@ function renderChordLane(){
       const end = i < clip.chords.length - 1
         ? clip.startTime + clip.chords[i+1].time
         : clip.startTime + clip.duration;
-
-      blocks.push({
-        label: clip.chords[i].label,
-        start,
-        end
-      });
+      blocks.push({ label: clip.chords[i].label, start, end });
     }
   });
 
@@ -707,8 +784,8 @@ function renderClip(clip){
 
   let el = trackEl.querySelector(`.clip[data-id="${clip.id}"]`);
   if(!el){
-    el = document.createElement('div');
-    el.className = 'clip';
+    el = document.createElement("div");
+    el.className = "clip";
     el.dataset.id = clip.id;
     el.innerHTML = `
       <div class="clip-header">
@@ -721,19 +798,19 @@ function renderClip(clip){
     `;
     trackEl.appendChild(el);
 
-    el.addEventListener('pointerdown', onClipPointerDown);
-    el.addEventListener('click', e => {
+    el.addEventListener("pointerdown", onClipPointerDown);
+    el.addEventListener("click", e => {
       e.stopPropagation();
       selectClip(clip.id);
     });
   }
 
-  el.classList.toggle('selected', clip.id === state.selectedClipId);
+  el.classList.toggle("selected", clip.id === state.selectedClipId);
   el.style.left = `${timeToX(clip.startTime)}px`;
   el.style.width = `${Math.max(24, timeToX(clip.duration))}px`;
-  el.querySelector('.clip-title').textContent = clip.name + (clip.chords.length ? ` · ${clip.chords[0].label}` : "");
-  el.querySelector('.clip-len').textContent = `${clip.duration.toFixed(2)}s`;
-  drawWaveform(el.querySelector('.wave'), clip.wavePeaks);
+  el.querySelector(".clip-title").textContent = clip.name + (clip.chords.length ? ` · ${clip.chords[0].label}` : "");
+  el.querySelector(".clip-len").textContent = `${clip.duration.toFixed(2)}s`;
+  drawWaveform(el.querySelector(".wave"), clip.wavePeaks);
 }
 
 function drawWaveform(canvas, peaks){
@@ -745,15 +822,15 @@ function drawWaveform(canvas, peaks){
   canvas.width = Math.floor(w * dpr);
   canvas.height = Math.floor(h * dpr);
 
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext("2d");
   ctx.scale(dpr, dpr);
   ctx.clearRect(0,0,w,h);
-  ctx.fillStyle = 'rgba(255,255,255,.06)';
+  ctx.fillStyle = "rgba(255,255,255,.06)";
   ctx.fillRect(0,0,w,h);
 
   if(!peaks || !peaks.length) return;
 
-  ctx.strokeStyle = 'rgba(210,241,255,.9)';
+  ctx.strokeStyle = "rgba(210,241,255,.9)";
   ctx.lineWidth = 1;
   const mid = h / 2;
   const step = peaks.length / w;
@@ -792,7 +869,7 @@ async function startRecording(){
   };
 
   mr.onstop = async () => {
-    const blob = new Blob(state.recChunks, {type:'audio/webm'});
+    const blob = new Blob(state.recChunks, {type:"audio/webm"});
     const arr = await blob.arrayBuffer();
     const decoded = await audioCtx.decodeAudioData(arr.slice(0));
     const duration = decoded.duration;
@@ -820,26 +897,24 @@ async function startRecording(){
   };
 
   mr.start();
-  setStatus('録音中');
+  setStatus("録音中");
 }
 
 function stopRecording(){
   if(!state.isRecording || !state.mediaRecorder) return;
   state.isRecording = false;
   state.mediaRecorder.stop();
-  setStatus('停止');
+  setStatus("停止");
 }
 
 function makePeaks(audioBuffer, size=1000){
   const channel = audioBuffer.getChannelData(0);
   const block = Math.max(1, Math.floor(channel.length / size));
   const peaks = [];
-
   for(let i=0;i<size;i++){
     let start = i * block;
     let end = Math.min(channel.length, start + block);
     let max = 0;
-
     for(let j=start;j<end;j++){
       const v = Math.abs(channel[j]);
       if(v > max) max = v;
@@ -847,6 +922,51 @@ function makePeaks(audioBuffer, size=1000){
     peaks.push(max);
   }
   return peaks;
+}
+
+function stopClickNodes(){
+  state.clickNodes.forEach(node => {
+    try { node.stop(); } catch {}
+    try { node.disconnect(); } catch {}
+  });
+  state.clickNodes = [];
+}
+
+function scheduleClickTrack(songStartTime){
+  stopClickNodes();
+  if(!state.clickEnabled) return;
+
+  const cfg = TIME_SIGNATURES[state.timeSig];
+  const totalBeats = state.bars * state.beatsPerBar;
+  const currentBeatPos = songStartTime / secPerBeat();
+  const startBeatIndex = Math.floor(currentBeatPos);
+
+  for(let beatIndex = startBeatIndex; beatIndex < totalBeats; beatIndex++){
+    const beatTime = beatIndex * secPerBeat();
+    const relWhen = beatTime - songStartTime;
+    if(relWhen < -0.0001) continue;
+
+    const beatInBar = beatIndex % state.beatsPerBar;
+    const isAccent = !!cfg.clickGroup[beatInBar];
+
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+
+    osc.type = "square";
+    osc.frequency.value = isAccent ? 1400 : 950;
+
+    gain.gain.setValueAtTime(0.0001, audioCtx.currentTime + Math.max(0, relWhen));
+    gain.gain.exponentialRampToValueAtTime(isAccent ? 0.22 : 0.12, audioCtx.currentTime + Math.max(0, relWhen) + 0.002);
+    gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + Math.max(0, relWhen) + (isAccent ? 0.05 : 0.035));
+
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    osc.start(audioCtx.currentTime + Math.max(0, relWhen));
+    osc.stop(audioCtx.currentTime + Math.max(0, relWhen) + 0.06);
+
+    state.clickNodes.push(osc);
+  }
 }
 
 function stopPlayback(){
@@ -857,6 +977,7 @@ function stopPlayback(){
       c.source = null;
     }
   });
+  stopClickNodes();
   state.isPlaying = false;
   cancelAnimationFrame(state.rafId);
 }
@@ -866,6 +987,8 @@ function playFromCurrent(){
   state.isPlaying = true;
   state.playStartAudioTime = audioCtx.currentTime;
   state.playStartSongTime = state.currentSongTime;
+
+  scheduleClickTrack(state.currentSongTime);
 
   state.clips.forEach(clip => {
     const clipEnd = clip.startTime + clip.duration;
@@ -893,7 +1016,7 @@ function playFromCurrent(){
   });
 
   tickPlayback();
-  setStatus('再生中');
+  setStatus("再生中");
 }
 
 function tickPlayback(){
@@ -907,7 +1030,7 @@ function tickPlayback(){
     updatePlayhead();
     updateReadout();
     stopPlayback();
-    setStatus('停止');
+    setStatus("停止");
     return;
   }
 
@@ -984,9 +1107,9 @@ function onClipPointerDown(e){
   selectClip(clip.id);
   const p = pointerToTimeline(e);
 
-  let mode = 'move';
-  if(e.target.classList.contains('handle')){
-    mode = e.target.classList.contains('left') ? 'trimL' : 'trimR';
+  let mode = "move";
+  if(e.target.classList.contains("handle")){
+    mode = e.target.classList.contains("left") ? "trimL" : "trimR";
   }
 
   state.drag = {
@@ -1000,29 +1123,29 @@ function onClipPointerDown(e){
   };
 
   clipEl.setPointerCapture(e.pointerId);
-  clipEl.classList.add('dragging');
+  clipEl.classList.add("dragging");
 
   const move = ev => onClipPointerMove(ev);
   const up = ev => {
     clipEl.releasePointerCapture(ev.pointerId);
-    clipEl.classList.remove('dragging');
-    clipEl.removeEventListener('pointermove', move);
-    clipEl.removeEventListener('pointerup', up);
-    clipEl.removeEventListener('pointercancel', up);
+    clipEl.classList.remove("dragging");
+    clipEl.removeEventListener("pointermove", move);
+    clipEl.removeEventListener("pointerup", up);
+    clipEl.removeEventListener("pointercancel", up);
     if(state.drag?.ghost) state.drag.ghost.remove();
     state.drag = null;
     renderAll();
   };
 
-  clipEl.addEventListener('pointermove', move);
-  clipEl.addEventListener('pointerup', up);
-  clipEl.addEventListener('pointercancel', up);
+  clipEl.addEventListener("pointermove", move);
+  clipEl.addEventListener("pointerup", up);
+  clipEl.addEventListener("pointercancel", up);
 }
 
 function createGhost(clip){
   const trackEl = els.tracks[clip.track];
-  const ghost = document.createElement('div');
-  ghost.className = 'ghost';
+  const ghost = document.createElement("div");
+  ghost.className = "ghost";
   ghost.style.left = `${timeToX(clip.startTime)}px`;
   ghost.style.width = `${Math.max(24, timeToX(clip.duration))}px`;
   trackEl.appendChild(ghost);
@@ -1038,12 +1161,12 @@ function onClipPointerMove(e){
   const dx = p.x - state.drag.startX;
   const dSec = snapBeats(pxToBeats(dx)) * secPerBeat();
 
-  if(state.drag.mode === 'move'){
+  if(state.drag.mode === "move"){
     clip.startTime = clamp(state.drag.originStart + dSec, 0, songDurationSec() - clip.duration);
     clip.track = getTrackIndexFromY(p.y);
   }
 
-  if(state.drag.mode === 'trimL'){
+  if(state.drag.mode === "trimL"){
     const minDur = .1;
     let newStart = clamp(
       state.drag.originStart + dSec,
@@ -1060,7 +1183,7 @@ function onClipPointerMove(e){
       .map(ch => ({time: Math.max(0, ch.time - diff), label: ch.label}));
   }
 
-  if(state.drag.mode === 'trimR'){
+  if(state.drag.mode === "trimR"){
     const minDur = .1;
     let newDur = clamp(state.drag.originDuration + dSec, minDur, clip.sourceDuration - clip.offset);
     if(clip.startTime + newDur > songDurationSec()) newDur = songDurationSec() - clip.startTime;
@@ -1069,7 +1192,7 @@ function onClipPointerMove(e){
   }
 
   if(state.drag.ghost){
-    if(state.drag.mode === 'move' && clip.track !== state.drag.originTrack){
+    if(state.drag.mode === "move" && clip.track !== state.drag.originTrack){
       state.drag.ghost.remove();
       state.drag.ghost = createGhost(clip);
       state.drag.originTrack = clip.track;
@@ -1082,58 +1205,64 @@ function onClipPointerMove(e){
   updateReadout();
 }
 
-els.timeline.addEventListener('click', e => {
-  if(e.target.closest('.clip')) return;
+els.timeline.addEventListener("click", e => {
+  if(e.target.closest(".clip")) return;
   const p = pointerToTimeline(e);
   state.currentSongTime = clamp(xToTime(p.x), 0, songDurationSec());
   updatePlayhead();
   updateReadout();
 });
 
-els.recBtn.addEventListener('click', async () => {
+els.recBtn.addEventListener("click", async () => {
   try{
     await startRecording();
   }catch(err){
     console.error(err);
-    setStatus('録音失敗');
-    alert('マイクの許可が必要です。');
+    setStatus("録音失敗");
+    alert("マイクの許可が必要です。");
   }
 });
 
-els.stopBtn.addEventListener('click', () => {
+els.stopBtn.addEventListener("click", () => {
   stopRecording();
   stopPlayback();
-  setStatus('停止');
+  setStatus("停止");
 });
 
-els.playBtn.addEventListener('click', async () => {
+els.playBtn.addEventListener("click", async () => {
   await audioCtx.resume();
   playFromCurrent();
 });
 
-els.pauseBtn.addEventListener('click', () => {
+els.pauseBtn.addEventListener("click", () => {
   if(!state.isPlaying) return;
   const elapsed = audioCtx.currentTime - state.playStartAudioTime;
   state.currentSongTime = state.playStartSongTime + elapsed;
   stopPlayback();
   updatePlayhead();
   updateReadout();
-  setStatus('一時停止');
+  setStatus("一時停止");
 });
 
-els.deleteBtn.addEventListener('click', deleteSelected);
-els.addChordBtn.addEventListener('click', addChordToSelectedContext);
-els.deleteChordBtn.addEventListener('click', deleteLastChord);
-els.clearChordBtn.addEventListener('click', clearChords);
-els.bpm.addEventListener('input', updateTimelineSize);
-els.bars.addEventListener('input', updateTimelineSize);
-els.zoom.addEventListener('input', updateTimelineSize);
-window.addEventListener('resize', renderAll);
+els.deleteBtn.addEventListener("click", deleteSelected);
+els.clickBtn.addEventListener("click", () => {
+  state.clickEnabled = !state.clickEnabled;
+  updateReadout();
+});
+els.addChordBtn.addEventListener("click", addChordToSelectedContext);
+els.deleteChordBtn.addEventListener("click", deleteLastChord);
+els.clearChordBtn.addEventListener("click", clearChords);
+els.bpm.addEventListener("input", updateTimelineSize);
+els.timeSig.addEventListener("change", updateTimelineSize);
+els.bars.addEventListener("input", updateTimelineSize);
+els.zoom.addEventListener("input", updateTimelineSize);
+window.addEventListener("resize", renderAll);
 
 initChordPad();
+applyTimeSignature();
 updateTimelineSize();
 updateReadout();
-setStatus('待機中');
+setStatus("待機中");
 })();
 </script>
 </body>
