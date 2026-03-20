@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>HookPad v7.7</title>
+<title>HookPad v8 - mini DAW</title>
 <style>
 :root{
   --bg:#081226;
@@ -16,6 +16,7 @@
   --accent2:#8dd7ff;
   --ok:#38d39f;
   --warn:#ffc857;
+  --danger:#ff6b6b;
 }
 *{box-sizing:border-box}
 body{
@@ -25,7 +26,7 @@ body{
   color:var(--text);
 }
 .app{
-  max-width:920px;
+  max-width:1200px;
   margin:0 auto;
   padding:16px;
 }
@@ -33,1815 +34,881 @@ body{
   background:rgba(15,27,51,.96);
   border:1px solid var(--line);
   border-radius:18px;
-  padding:16px;
-  margin-bottom:14px;
+  padding:14px;
+  box-shadow:0 10px 30px rgba(0,0,0,.18);
 }
-h1{
-  margin:0 0 6px;
-  font-size:1.9rem;
+.toolbar{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  align-items:center;
+  margin-bottom:12px;
 }
-p{
-  margin:0 0 12px;
-  color:var(--muted);
-}
-button,input,select,textarea{
+button, select, input{
+  background:var(--panel2);
+  color:var(--text);
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:10px 12px;
   font:inherit;
 }
 button{
-  padding:14px 16px;
-  border-radius:12px;
-  border:1px solid var(--line);
-  background:#1b2b47;
-  color:#fff;
+  cursor:pointer;
 }
-button:active{ transform:scale(.99); }
+button:hover{
+  border-color:var(--accent);
+}
+button.primary{
+  background:linear-gradient(180deg,#1a6fb6,#165894);
+  border-color:#2f8fe0;
+}
+button.ok{
+  background:linear-gradient(180deg,#19986f,#147858);
+  border-color:#36c394;
+}
 button.warn{
-  background:#4a3820;
-  border-color:#9b6b1d;
+  background:linear-gradient(180deg,#b98b17,#8f6b12);
+  border-color:#e0b545;
 }
-input,select,textarea{
-  width:100%;
-  padding:12px;
-  border-radius:12px;
-  border:1px solid var(--line);
-  background:#182640;
-  color:#fff;
-}
-textarea{
-  min-height:96px;
+button.danger{
+  background:linear-gradient(180deg,#b94848,#8c3636);
+  border-color:#df7070;
 }
 .row{
-  display:flex;
-  gap:10px;
-  flex-wrap:wrap;
-  align-items:center;
-}
-.grid2,.grid3,.grid4{
   display:grid;
-  gap:10px;
-}
-.grid2{ grid-template-columns:repeat(2,minmax(0,1fr)); }
-.grid3{ grid-template-columns:repeat(3,minmax(0,1fr)); }
-.grid4{ grid-template-columns:repeat(4,minmax(0,1fr)); }
-
-.timeline{
-  display:flex;
-  gap:8px;
-  overflow-x:auto;
-  margin-bottom:12px;
-}
-.slot{
-  min-width:110px;
-  padding:12px;
-  border-radius:12px;
-  border:1px solid var(--line);
-  background:#182640;
-  text-align:center;
-  transition:.12s ease;
-}
-.slot.active{
-  outline:2px solid var(--accent);
-  box-shadow:0 0 0 2px rgba(59,183,255,.15) inset;
-}
-.slot.playing{
-  background:#213558;
-  border-color:var(--accent);
-  box-shadow:0 0 18px rgba(59,183,255,.22);
-}
-.slot.loopRange{
-  border-color:var(--warn);
-  box-shadow:0 0 0 1px rgba(255,200,87,.35) inset;
-}
-
-.status{
-  margin-top:10px;
-  padding:10px 12px;
-  border-radius:12px;
-  background:#182640;
-  color:var(--muted);
-}
-.small{
-  font-size:.92rem;
-  color:var(--muted);
-}
-audio{
-  width:100%;
-  margin-top:10px;
-}
-
-.beatBox{
-  display:flex;
-  gap:8px;
-  margin-top:12px;
-}
-.beat{
-  flex:1;
-  text-align:center;
-  padding:12px 0;
-  border-radius:12px;
-  border:1px solid var(--line);
-  background:#182640;
-  color:var(--muted);
-  font-weight:700;
-  transition:.08s ease;
-}
-.beat.on{
-  background:var(--accent);
-  color:#081226;
-  border-color:var(--accent2);
-  box-shadow:0 0 18px rgba(59,183,255,.30);
-}
-.beat.down{
-  background:#8dd7ff;
-  color:#081226;
-}
-
-.waveWrap{
-  margin-top:12px;
-  padding:12px;
-  border-radius:12px;
-  background:#182640;
-  border:1px solid var(--line);
-}
-.waveHeader{
-  display:flex;
-  justify-content:space-between;
-  align-items:flex-start;
+  grid-template-columns: 220px 1fr;
   gap:12px;
-  margin-bottom:8px;
 }
-.waveHeaderLeft{
+@media (max-width:900px){
+  .row{ grid-template-columns:1fr; }
+}
+.side{
   display:flex;
   flex-direction:column;
-  gap:4px;
-}
-.waveTools{
-  display:flex;
-  gap:8px;
-  flex-wrap:wrap;
-  align-items:center;
-}
-.waveTool{
-  display:flex;
-  align-items:center;
-  gap:6px;
-  padding:8px 10px;
-  border-radius:10px;
-  border:1px solid var(--line);
-  background:#16253f;
-}
-.waveTool input[type="checkbox"]{
-  width:auto;
-  margin:0;
-}
-.waveTool select{
-  width:auto;
-  min-width:92px;
-  padding:8px 10px;
-}
-.waveTool input[type="number"]{
-  width:76px;
-  padding:8px 10px;
-}
-.waveCanvas{
-  width:100%;
-  height:128px;
-  display:block;
-  background:#0d1730;
-  border-radius:10px;
-  border:1px solid #2a3b58;
-  touch-action:none;
-  user-select:none;
-}
-.legend{
-  display:flex;
   gap:12px;
-  flex-wrap:wrap;
-  margin-top:8px;
 }
-.legendItem{
-  display:flex;
-  align-items:center;
-  gap:6px;
+.info{
   color:var(--muted);
-  font-size:.9rem;
+  font-size:14px;
+  line-height:1.5;
 }
-.swatch{
+label{
+  display:block;
+  font-size:13px;
+  color:var(--muted);
+  margin-bottom:6px;
+}
+.stat{
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:8px;
+  font-size:14px;
+  padding:6px 0;
+  border-bottom:1px solid rgba(255,255,255,.05);
+}
+.stat:last-child{ border-bottom:none; }
+.timeline-wrap{
+  overflow:auto;
+  border:1px solid var(--line);
+  border-radius:16px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,0)),
+    #0b162b;
+}
+.timeline{
+  position:relative;
+  min-height:360px;
+  min-width:1000px;
+}
+.ruler{
+  position:sticky;
+  top:0;
+  z-index:30;
+  height:46px;
+  background:rgba(13,22,43,.96);
+  border-bottom:1px solid var(--line);
+}
+.track{
+  position:relative;
+  height:110px;
+  border-bottom:1px solid rgba(255,255,255,.08);
+  background:
+    repeating-linear-gradient(
+      90deg,
+      rgba(255,255,255,.03) 0px,
+      rgba(255,255,255,.03) 1px,
+      transparent 1px,
+      transparent calc(var(--beatPx) - 1px)
+    );
+}
+.track:nth-child(even){
+  background-color:rgba(255,255,255,.01);
+}
+.measure-line{
+  position:absolute;
+  top:0;
+  bottom:0;
+  width:1px;
+  background:rgba(141,215,255,.25);
+}
+.measure-label{
+  position:absolute;
+  top:6px;
+  transform:translateX(6px);
+  font-size:12px;
+  color:var(--accent2);
+}
+.playhead{
+  position:absolute;
+  top:0;
+  bottom:0;
+  width:2px;
+  background:#ff6b6b;
+  z-index:50;
+  box-shadow:0 0 12px rgba(255,107,107,.6);
+  pointer-events:none;
+}
+.playhead::before{
+  content:"";
+  position:absolute;
+  top:0;
+  left:-5px;
   width:12px;
   height:12px;
-  border-radius:999px;
+  border-radius:50%;
+  background:#ff6b6b;
 }
-
-.quickChordGrid{
-  display:grid;
-  grid-template-columns:repeat(4,minmax(0,1fr));
-  gap:10px;
+.clip{
+  position:absolute;
+  top:14px;
+  height:82px;
+  border-radius:14px;
+  overflow:hidden;
+  border:2px solid rgba(59,183,255,.45);
+  background:linear-gradient(180deg, rgba(59,183,255,.22), rgba(59,183,255,.12));
+  box-shadow:0 6px 18px rgba(0,0,0,.22);
+  cursor:grab;
+  user-select:none;
 }
-.quickChordBtn{
-  padding:14px 10px;
-  font-weight:700;
-  background:#1a2b48;
+.clip.selected{
+  border-color:var(--ok);
+  box-shadow:0 0 0 2px rgba(56,211,159,.18), 0 8px 22px rgba(0,0,0,.3);
 }
-.quickChordBtn.empty{
-  opacity:.45;
+.clip.dragging{
+  cursor:grabbing;
+  opacity:.9;
 }
-.rootPadGrid{
-  display:grid;
-  grid-template-columns:repeat(4,minmax(0,1fr));
-  gap:10px;
+.clip-header{
+  position:absolute;
+  left:10px;
+  top:6px;
+  right:10px;
+  display:flex;
+  justify-content:space-between;
+  gap:8px;
+  font-size:12px;
+  color:#dff3ff;
+  z-index:2;
+  pointer-events:none;
 }
-.rootPadBtn{
-  padding:16px 10px;
-  font-weight:700;
-  background:#182949;
+.wave{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
 }
-.badge{
-  display:inline-block;
-  padding:4px 8px;
-  border-radius:999px;
-  background:#1a2b48;
+.handle{
+  position:absolute;
+  top:0;
+  width:10px;
+  height:100%;
+  z-index:3;
+}
+.handle.left{
+  left:0;
+  cursor:ew-resize;
+}
+.handle.right{
+  right:0;
+  cursor:ew-resize;
+}
+.ghost{
+  position:absolute;
+  top:14px;
+  height:82px;
+  border-radius:14px;
+  border:2px dashed rgba(255,255,255,.4);
+  background:rgba(255,255,255,.08);
+  pointer-events:none;
+  z-index:20;
+}
+.track-name{
+  position:absolute;
+  left:10px;
+  top:50%;
+  transform:translateY(-50%);
+  font-size:12px;
   color:var(--muted);
-  font-size:.82rem;
-  margin-left:8px;
+  pointer-events:none;
 }
-@media (max-width:640px){
-  .grid2,.grid3,.grid4{ grid-template-columns:1fr; }
-  .quickChordGrid,.rootPadGrid{ grid-template-columns:repeat(3,minmax(0,1fr)); }
-  .waveHeader{
-    flex-direction:column;
-    align-items:stretch;
-  }
+.footer-note{
+  margin-top:10px;
+  font-size:12px;
+  color:var(--muted);
+}
+.kbd{
+  display:inline-block;
+  padding:2px 6px;
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:#14233d;
+  font-size:12px;
 }
 </style>
 </head>
 <body>
 <div class="app">
-  <h1>HookPad v7.7</h1>
-  <p>現状版 + 触る対象が分かりやすいUI。</p>
-
   <div class="panel">
-    <h2 style="margin:0 0 12px;">フック録音</h2>
+    <div class="toolbar">
+      <button id="recBtn" class="danger">● 録音</button>
+      <button id="stopBtn" class="warn">■ 停止</button>
+      <button id="playBtn" class="primary">▶ 再生</button>
+      <button id="pauseBtn">⏸ 一時停止</button>
+      <button id="deleteBtn">削除</button>
+
+      <div>
+        <label for="bpm">BPM</label>
+        <input id="bpm" type="number" min="40" max="240" value="120" style="width:90px">
+      </div>
+
+      <div>
+        <label for="bars">小節数</label>
+        <input id="bars" type="number" min="4" max="128" value="16" style="width:90px">
+      </div>
+
+      <div>
+        <label for="snap">スナップ</label>
+        <select id="snap">
+          <option value="1">1拍</option>
+          <option value="0.5">1/2拍</option>
+          <option value="0.25">1/4拍</option>
+          <option value="0">なし</option>
+        </select>
+      </div>
+
+      <div>
+        <label for="zoom">ズーム</label>
+        <input id="zoom" type="range" min="40" max="180" value="80">
+      </div>
+    </div>
 
     <div class="row">
-      <button id="warmupBtn" type="button">ウォームアップ</button>
-      <button id="metroBtn" type="button">メトロノーム開始</button>
-      <button id="startRecBtn" type="button">録音開始</button>
-      <button id="stopRecBtn" type="button">録音停止</button>
-      <button id="downloadRecBtn" type="button">録音を保存</button>
-      <button id="detectHeadBtn" type="button" class="warn">頭出し候補を反映</button>
-    </div>
-
-    <div class="grid2" style="margin-top:12px;">
-      <div>
-        <label>曲名 / メモ名</label>
-        <input id="projectName" placeholder="例：新曲サビ候補A" />
-      </div>
-      <div>
-        <label>BPM</label>
-        <input id="bpm" type="number" value="120" min="40" max="240" />
-      </div>
-    </div>
-
-    <div class="grid4" style="margin-top:12px;">
-      <div>
-        <label>自動トリム（秒）</label>
-        <input id="autoTrim" type="number" value="2.40" step="0.01" />
-      </div>
-      <div>
-        <label>録音再生オフセット（秒）</label>
-        <input id="audioOffset" type="number" value="0.00" step="0.01" />
-      </div>
-      <div>
-        <label>コード再生オフセット（秒）</label>
-        <input id="chordOffset" type="number" value="0.00" step="0.01" />
-      </div>
-      <div>
-        <label>キー</label>
-        <select id="keySelect"></select>
-      </div>
-    </div>
-
-    <div class="row" style="margin-top:12px;">
-      <label>
-        <input id="clickToggle" type="checkbox" checked style="width:auto;margin-right:8px;" />
-        クリック音を鳴らす
-      </label>
-      <span class="badge" id="headDetectLabel">頭出し: 未解析</span>
-    </div>
-
-    <div class="beatBox">
-      <div class="beat" data-beat="0">1</div>
-      <div class="beat" data-beat="1">2</div>
-      <div class="beat" data-beat="2">3</div>
-      <div class="beat" data-beat="3">4</div>
-    </div>
-
-    <div class="status" id="recordStatus">ウォームアップ → 録音 → 頭を合わせる → ループでコード探し。</div>
-    <audio id="audioPlayer" controls></audio>
-    <div class="small" style="margin-top:8px;">
-      黄色 = ソース内の頭出し / 緑の塊 = 実際のリージョン
-    </div>
-
-    <div class="waveWrap">
-      <div class="waveHeader">
-        <div class="waveHeaderLeft">
-          <strong>録音波形</strong>
-          <span class="small" id="waveInfo">録音後に表示</span>
+      <div class="side">
+        <div class="panel" style="padding:12px;">
+          <div class="stat"><span>状態</span><strong id="statusText">待機中</strong></div>
+          <div class="stat"><span>現在位置</span><strong id="posText">1:1</strong></div>
+          <div class="stat"><span>選択クリップ</span><strong id="selText">なし</strong></div>
+          <div class="stat"><span>録音数</span><strong id="countText">0</strong></div>
         </div>
 
-        <div class="waveTools">
-          <label class="waveTool">
-            <input id="snapToggle" type="checkbox" checked />
-            <span>Snap</span>
-          </label>
-
-          <label class="waveTool">
-            <span>単位</span>
-            <select id="snapDivision">
-              <option value="off">OFF</option>
-              <option value="1/4" selected>1/4</option>
-              <option value="1/8">1/8</option>
-              <option value="1/16">1/16</option>
-              <option value="1/32">1/32</option>
-            </select>
-          </label>
-
-          <label class="waveTool">
-            <span>強度(px)</span>
-            <input id="snapStrength" type="number" value="12" min="4" max="40" step="1" />
-          </label>
+        <div class="panel" style="padding:12px;">
+          <div class="info">
+            使い方<br>
+            ・<span class="kbd">録音</span>で新規クリップ作成<br>
+            ・クリップ本体をドラッグで移動<br>
+            ・左右端をドラッグで長さ変更<br>
+            ・再生ヘッドはタイムラインをクリックで移動
+          </div>
         </div>
       </div>
 
-      <canvas id="waveCanvas" class="waveCanvas" width="900" height="128"></canvas>
-
-      <div class="legend">
-        <div class="legendItem"><span class="swatch" style="background:#3bb7ff;"></span>波形 / ライブ波形</div>
-        <div class="legendItem"><span class="swatch" style="background:#ffc857;"></span>頭出し位置</div>
-        <div class="legendItem"><span class="swatch" style="background:#38d39f;"></span>リージョン塊</div>
-      </div>
-
-      <div class="small" style="margin-top:8px;">
-        黄色線ドラッグ = 頭出し変更 / 緑の塊ドラッグ = リージョン移動
-      </div>
-    </div>
-  </div>
-
-  <div class="panel">
-    <h2 style="margin:0 0 12px;">コード進行</h2>
-
-    <div class="grid4" style="margin-bottom:12px;">
-      <div>
-        <label>ループ開始小節</label>
-        <input id="loopStartBar" type="number" min="1" value="1" />
-      </div>
-      <div>
-        <label>ループ終了小節</label>
-        <input id="loopEndBar" type="number" min="1" value="4" />
-      </div>
-      <div style="display:flex;align-items:end;">
-        <button id="setLoopToSelectionBtn" type="button" style="width:100%;">現在選択を開始に</button>
-      </div>
-      <div style="display:flex;align-items:end;">
-        <button id="setLoopEndToSelectionBtn" type="button" style="width:100%;">現在選択を終了に</button>
+      <div class="timeline-wrap">
+        <div id="timeline" class="timeline">
+          <div id="ruler" class="ruler"></div>
+          <div class="track" data-track="0">
+            <div class="track-name">Track 1</div>
+          </div>
+          <div class="track" data-track="1">
+            <div class="track-name">Track 2</div>
+          </div>
+          <div class="track" data-track="2">
+            <div class="track-name">Track 3</div>
+          </div>
+          <div id="playhead" class="playhead"></div>
+        </div>
       </div>
     </div>
 
-    <div class="timeline" id="timeline"></div>
-
-    <div class="row">
-      <button id="leftBtn" type="button">◀</button>
-      <button id="rightBtn" type="button">▶</button>
-      <button id="deleteBtn" type="button">⌫</button>
-      <button id="addBarsBtn" type="button">+4</button>
-      <button id="loopBtn" type="button">LOOP</button>
+    <div class="footer-note">
+      これはブラウザだけで動く試作版。波形は簡易表示だけど、「塊をそのまま掴んで動かす」挙動はDAW寄りにしてある。
     </div>
-
-    <div class="status" id="loopStatus">録音とコードを同時ループして、ルートから探す。</div>
-  </div>
-
-  <div class="panel">
-    <h2 style="margin:0 0 12px;">作曲モード</h2>
-
-    <div class="small" style="margin-bottom:8px;">ルートパッド</div>
-    <div class="rootPadGrid" id="rootPadGrid"></div>
-
-    <div class="small" style="margin:12px 0 8px;">ダイアトニック</div>
-    <div class="quickChordGrid" id="diatonicGrid"></div>
-
-    <div class="small" style="margin:12px 0 8px;">最近使ったコード</div>
-    <div class="quickChordGrid" id="recentChordGrid"></div>
-  </div>
-
-  <div class="panel">
-    <h2 style="margin:0 0 12px;">コード入力</h2>
-
-    <div class="grid3">
-      <select id="root"></select>
-      <select id="type"></select>
-      <select id="slash"></select>
-    </div>
-
-    <div class="row" style="margin-top:12px;">
-      <button id="addChordBtn" type="button">追加</button>
-      <button id="previewBtn" type="button">試聴</button>
-    </div>
-  </div>
-
-  <div class="panel">
-    <h2 style="margin:0 0 12px;">歌詞メモ</h2>
-    <textarea id="lyrics" placeholder="仮歌詞 / フレーズ / 連想ワード"></textarea>
   </div>
 </div>
 
 <script>
-const roots = ["C","C#","D","Eb","E","F","F#","G","Ab","A","Bb","B"];
-const types = ["","m","7","maj7","m7","sus2","sus4","9","11","add9","aug","dim","m7b5","mM7"];
+(() => {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  const audioCtx = new AudioContextClass();
 
-const DIATONIC_MAJOR = [
-  {degree:0, type:"", label:"I"},
-  {degree:2, type:"m", label:"ii"},
-  {degree:4, type:"m", label:"iii"},
-  {degree:5, type:"", label:"IV"},
-  {degree:7, type:"", label:"V"},
-  {degree:9, type:"m", label:"vi"},
-  {degree:11, type:"dim", label:"vii°"}
-];
-
-const rootSel = document.getElementById("root");
-const typeSel = document.getElementById("type");
-const slashSel = document.getElementById("slash");
-const timelineEl = document.getElementById("timeline");
-const bpmEl = document.getElementById("bpm");
-const audioPlayer = document.getElementById("audioPlayer");
-const recordStatus = document.getElementById("recordStatus");
-const loopStatus = document.getElementById("loopStatus");
-const clickToggle = document.getElementById("clickToggle");
-const snapToggle = document.getElementById("snapToggle");
-const snapDivisionEl = document.getElementById("snapDivision");
-const snapStrengthEl = document.getElementById("snapStrength");
-const warmupBtn = document.getElementById("warmupBtn");
-const metroBtn = document.getElementById("metroBtn");
-const startRecBtn = document.getElementById("startRecBtn");
-const stopRecBtn = document.getElementById("stopRecBtn");
-const downloadRecBtn = document.getElementById("downloadRecBtn");
-const detectHeadBtn = document.getElementById("detectHeadBtn");
-const autoTrimEl = document.getElementById("autoTrim");
-const audioOffsetEl = document.getElementById("audioOffset");
-const chordOffsetEl = document.getElementById("chordOffset");
-const loopBtn = document.getElementById("loopBtn");
-const beatEls = [...document.querySelectorAll(".beat")];
-const waveCanvas = document.getElementById("waveCanvas");
-const waveInfo = document.getElementById("waveInfo");
-const loopStartBarEl = document.getElementById("loopStartBar");
-const loopEndBarEl = document.getElementById("loopEndBar");
-const keySelect = document.getElementById("keySelect");
-const headDetectLabel = document.getElementById("headDetectLabel");
-const lyricsEl = document.getElementById("lyrics");
-const projectNameEl = document.getElementById("projectName");
-
-const state = {
-  slots: ["-","-","-","-"],
-  cursor: 0,
-
-  audioCtx: null,
-  mediaRecorder: null,
-  mediaStream: null,
-  recordedChunks: [],
-  recordedBlob: null,
-
-  warmedUp: false,
-  mode: "idle",
-
-  metroTimerId: null,
-  metroLookahead: 25.0,
-  metroScheduleAheadTime: 0.12,
-  metroNextNoteTime: 0.0,
-  metroBeatNumber: 0,
-  metronomeOn: false,
-
-  pendingChordTimeouts: [],
-  pendingAudioTimeouts: [],
-  loopRafId: null,
-  loopStartTime: 0,
-
-  currentBeatVisual: -1,
-  playingBarIndex: -1,
-
-  waveformData: null,
-  waveformDuration: 0,
-  audioBufferMono: null,
-  detectedHeadSec: null,
-
-  recentChords: [],
-
-  dragMode: null,
-  regionDragOffsetSec: 0,
-  hoverMode: null,
-
-  analyser: null,
-  liveDataArray: null,
-  liveRAF: null,
-  liveWriteX: 0,
-  liveTrail: []
-};
-
-function saveState(){
-  const data = {
-    bpm: bpmEl.value,
-    autoTrim: autoTrimEl.value,
-    audioOffset: audioOffsetEl.value,
-    chordOffset: chordOffsetEl.value,
-    click: clickToggle.checked,
-    snap: snapToggle.checked,
-    snapDivision: snapDivisionEl.value,
-    snapStrength: snapStrengthEl.value,
-    loopStartBar: loopStartBarEl.value,
-    loopEndBar: loopEndBarEl.value,
-    recentChords: state.recentChords,
-    slots: state.slots,
-    lyrics: lyricsEl.value,
-    projectName: projectNameEl.value,
-    key: keySelect.value
+  const state = {
+    bpm: 120,
+    beatsPerBar: 4,
+    bars: 16,
+    beatPx: 80,
+    trackTopOffset: 46,
+    trackHeight: 110,
+    clips: [],
+    selectedClipId: null,
+    mediaRecorder: null,
+    recChunks: [],
+    recordStartPerf: 0,
+    isRecording: false,
+    isPlaying: false,
+    playStartAudioTime: 0,
+    playStartSongTime: 0,
+    currentSongTime: 0,
+    rafId: null,
+    drag: null
   };
-  localStorage.setItem("hookpad_current_state", JSON.stringify(data));
-}
 
-function loadState(){
-  const raw = localStorage.getItem("hookpad_current_state");
-  if(!raw) return;
-  try{
-    const data = JSON.parse(raw);
-    if(data.bpm !== undefined) bpmEl.value = data.bpm;
-    if(data.autoTrim !== undefined) autoTrimEl.value = data.autoTrim;
-    if(data.audioOffset !== undefined) audioOffsetEl.value = data.audioOffset;
-    if(data.chordOffset !== undefined) chordOffsetEl.value = data.chordOffset;
-    if(typeof data.click === "boolean") clickToggle.checked = data.click;
-    if(typeof data.snap === "boolean") snapToggle.checked = data.snap;
-    if(data.snapDivision !== undefined) snapDivisionEl.value = data.snapDivision;
-    if(data.snapStrength !== undefined) snapStrengthEl.value = data.snapStrength;
-    if(data.loopStartBar !== undefined) loopStartBarEl.value = data.loopStartBar;
-    if(data.loopEndBar !== undefined) loopEndBarEl.value = data.loopEndBar;
-    if(Array.isArray(data.recentChords)) state.recentChords = data.recentChords.slice(0, 6);
-    if(Array.isArray(data.slots)) state.slots = data.slots;
-    if(typeof data.lyrics === "string") lyricsEl.value = data.lyrics;
-    if(typeof data.projectName === "string") projectNameEl.value = data.projectName;
-    if(typeof data.key === "string") keySelect.value = data.key;
-  }catch(e){}
-}
+  const els = {
+    timeline: document.getElementById('timeline'),
+    ruler: document.getElementById('ruler'),
+    playhead: document.getElementById('playhead'),
+    recBtn: document.getElementById('recBtn'),
+    stopBtn: document.getElementById('stopBtn'),
+    playBtn: document.getElementById('playBtn'),
+    pauseBtn: document.getElementById('pauseBtn'),
+    deleteBtn: document.getElementById('deleteBtn'),
+    bpm: document.getElementById('bpm'),
+    bars: document.getElementById('bars'),
+    snap: document.getElementById('snap'),
+    zoom: document.getElementById('zoom'),
+    statusText: document.getElementById('statusText'),
+    posText: document.getElementById('posText'),
+    selText: document.getElementById('selText'),
+    countText: document.getElementById('countText'),
+    tracks: [...document.querySelectorAll('.track')]
+  };
 
-function buildSelects(){
-  roots.forEach(r=>{
-    const o = document.createElement("option");
-    o.value = r;
-    o.textContent = r;
-    rootSel.appendChild(o);
-
-    const s = document.createElement("option");
-    s.value = r;
-    s.textContent = r;
-    slashSel.appendChild(s);
-
-    const k = document.createElement("option");
-    k.value = r;
-    k.textContent = r + " major";
-    keySelect.appendChild(k);
-  });
-
-  const none = document.createElement("option");
-  none.value = "";
-  none.textContent = "none";
-  slashSel.prepend(none);
-  slashSel.value = "";
-
-  types.forEach(t=>{
-    const o = document.createElement("option");
-    o.value = t;
-    o.textContent = t || "major";
-    typeSel.appendChild(o);
-  });
-}
-
-function normalizedLoopRange(){
-  const total = state.slots.length;
-  let start = parseInt(loopStartBarEl.value || "1", 10);
-  let end = parseInt(loopEndBarEl.value || String(total), 10);
-
-  if(Number.isNaN(start)) start = 1;
-  if(Number.isNaN(end)) end = total;
-
-  start = Math.max(1, Math.min(start, total));
-  end = Math.max(1, Math.min(end, total));
-
-  if(start > end){
-    const tmp = start;
-    start = end;
-    end = tmp;
+  function secPerBeat() {
+    return 60 / state.bpm;
   }
 
-  return { start, end };
-}
-
-function renderTimeline(){
-  const range = normalizedLoopRange();
-  timelineEl.innerHTML = "";
-  state.slots.forEach((chord, i)=>{
-    const barNo = i + 1;
-    const div = document.createElement("button");
-    div.type = "button";
-    div.className = "slot";
-    if(i === state.cursor) div.classList.add("active");
-    if(i === state.playingBarIndex) div.classList.add("playing");
-    if(barNo >= range.start && barNo <= range.end) div.classList.add("loopRange");
-    div.textContent = chord + " / " + barNo + "小節目";
-    div.onclick = ()=>{
-      state.cursor = i;
-      renderTimeline();
-    };
-    timelineEl.appendChild(div);
-  });
-}
-
-function setBeatVisual(beatInBar){
-  state.currentBeatVisual = beatInBar;
-  beatEls.forEach((el, i)=>{
-    el.classList.remove("on","down");
-    if(i === beatInBar){
-      el.classList.add("on");
-      if(i === 0) el.classList.add("down");
-    }
-  });
-}
-
-function clearBeatVisual(){
-  state.currentBeatVisual = -1;
-  beatEls.forEach(el=>el.classList.remove("on","down"));
-}
-
-function currentChordName(){
-  const root = rootSel.value;
-  const type = typeSel.value;
-  const slash = slashSel.value;
-  return root + type + (slash ? "/" + slash : "");
-}
-
-function parseChordName(chord){
-  const m = chord.match(/^([A-G][b#]?)(.*?)(?:\/([A-G][b#]?))?$/);
-  if(!m) return { root:"C", type:"", slash:"" };
-  return {
-    root: m[1] || "C",
-    type: m[2] || "",
-    slash: m[3] || ""
-  };
-}
-
-function rememberChord(chord){
-  state.recentChords = state.recentChords.filter(c => c !== chord);
-  state.recentChords.unshift(chord);
-  state.recentChords = state.recentChords.slice(0, 6);
-  renderRecentChords();
-  saveState();
-}
-
-function renderRecentChords(){
-  const grid = document.getElementById("recentChordGrid");
-  grid.innerHTML = "";
-
-  for(let i = 0; i < 6; i++){
-    const chord = state.recentChords[i];
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "quickChordBtn" + (chord ? "" : " empty");
-    btn.textContent = chord || "-";
-    btn.disabled = !chord;
-    if(chord){
-      btn.onclick = ()=>applyQuickChord(chord);
-    }
-    grid.appendChild(btn);
+  function beatsToPx(beats) {
+    return beats * state.beatPx;
   }
-}
 
-function renderRootPad(){
-  const grid = document.getElementById("rootPadGrid");
-  grid.innerHTML = "";
-  roots.forEach(r=>{
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "rootPadBtn";
-    btn.textContent = r;
-    btn.onclick = ()=>applyQuickChord(r);
-    grid.appendChild(btn);
-  });
-}
-
-function chordDisplayName(rootIndex, type){
-  return roots[rootIndex % 12] + type;
-}
-
-function renderDiatonicChords(){
-  const grid = document.getElementById("diatonicGrid");
-  grid.innerHTML = "";
-
-  const keyRoot = roots.indexOf(keySelect.value || "C");
-  DIATONIC_MAJOR.forEach(item=>{
-    const chord = chordDisplayName(keyRoot + item.degree, item.type);
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "quickChordBtn";
-    btn.textContent = chord;
-    btn.title = item.label;
-    btn.onclick = ()=>applyQuickChord(chord);
-    grid.appendChild(btn);
-  });
-}
-
-async function ensureAudio(){
-  if(!state.audioCtx){
-    state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  function pxToBeats(px) {
+    return px / state.beatPx;
   }
-  if(state.audioCtx.state === "suspended"){
-    await state.audioCtx.resume();
+
+  function songDurationSec() {
+    return state.bars * state.beatsPerBar * secPerBeat();
   }
-}
 
-function noteFreq(note){
-  const map = {
-    C:0,"C#":1,Db:1,D:2,"D#":3,Eb:3,E:4,F:5,"F#":6,Gb:6,
-    G:7,"G#":8,Ab:8,A:9,"A#":10,Bb:10,B:11
-  };
-  const midi = 60 + map[note];
-  return 440 * Math.pow(2, (midi - 69) / 12);
-}
+  function timeToX(sec) {
+    return beatsToPx(sec / secPerBeat());
+  }
 
-async function playChord(root, type){
-  await ensureAudio();
+  function xToTime(x) {
+    return pxToBeats(x) * secPerBeat();
+  }
 
-  let intervals = [0,4,7];
-  if(type === "m") intervals = [0,3,7];
-  if(type === "7") intervals = [0,4,7,10];
-  if(type === "maj7") intervals = [0,4,7,11];
-  if(type === "m7") intervals = [0,3,7,10];
-  if(type === "sus2") intervals = [0,2,7];
-  if(type === "sus4") intervals = [0,5,7];
-  if(type === "dim") intervals = [0,3,6];
-  if(type === "aug") intervals = [0,4,8];
-  if(type === "m7b5") intervals = [0,3,6,10];
-  if(type === "9") intervals = [0,4,7,10,14];
-  if(type === "11") intervals = [0,4,7,10,14,17];
-  if(type === "add9") intervals = [0,4,7,14];
-  if(type === "mM7") intervals = [0,3,7,11];
+  function snapBeats(v) {
+    const s = parseFloat(els.snap.value);
+    if (!s) return v;
+    return Math.round(v / s) * s;
+  }
 
-  const rootIndex = roots.indexOf(root);
-  intervals.forEach(i=>{
-    const note = roots[(rootIndex + (i % 12)) % 12];
-    const osc = state.audioCtx.createOscillator();
-    const gain = state.audioCtx.createGain();
+  function formatPos(sec) {
+    const totalBeats = sec / secPerBeat();
+    const bar = Math.floor(totalBeats / state.beatsPerBar) + 1;
+    const beat = Math.floor(totalBeats % state.beatsPerBar) + 1;
+    return `${bar}:${beat}`;
+  }
 
-    osc.type = "sine";
-    osc.frequency.value = noteFreq(note);
+  function clamp(v, min, max) {
+    return Math.max(min, Math.min(max, v));
+  }
 
-    osc.connect(gain);
-    gain.connect(state.audioCtx.destination);
+  function setStatus(txt) {
+    els.statusText.textContent = txt;
+  }
 
-    gain.gain.setValueAtTime(0.13, state.audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.0001, state.audioCtx.currentTime + 1.0);
+  function updateReadout() {
+    els.posText.textContent = formatPos(state.currentSongTime);
+    const sel = state.clips.find(c => c.id === state.selectedClipId);
+    els.selText.textContent = sel ? sel.name : 'なし';
+    els.countText.textContent = String(state.clips.length);
+  }
 
-    osc.start();
-    osc.stop(state.audioCtx.currentTime + 1.0);
-  });
-}
+  function updateTimelineSize() {
+    state.bpm = Number(els.bpm.value) || 120;
+    state.bars = Number(els.bars.value) || 16;
+    state.beatPx = Number(els.zoom.value) || 80;
 
-async function playBass(root){
-  await ensureAudio();
+    const totalBeats = state.bars * state.beatsPerBar;
+    els.timeline.style.setProperty('--beatPx', `${state.beatPx}px`);
+    els.timeline.style.width = `${beatsToPx(totalBeats)}px`;
 
-  const map = {
-    C:0,"C#":1,Db:1,D:2,"D#":3,Eb:3,E:4,F:5,"F#":6,Gb:6,
-    G:7,"G#":8,Ab:8,A:9,"A#":10,Bb:10,B:11
-  };
-  const midi = 36 + map[root];
-  const freq = 440 * Math.pow(2, (midi - 69) / 12);
+    renderRuler();
+    renderAllClips();
+    updatePlayhead();
+    updateReadout();
+  }
 
-  const osc = state.audioCtx.createOscillator();
-  const gain = state.audioCtx.createGain();
+  function renderRuler() {
+    els.ruler.innerHTML = '';
+    const totalBars = state.bars;
+    for (let i = 0; i <= totalBars; i++) {
+      const x = beatsToPx(i * state.beatsPerBar);
 
-  osc.type = "sawtooth";
-  osc.frequency.value = freq;
-  osc.connect(gain);
-  gain.connect(state.audioCtx.destination);
+      const line = document.createElement('div');
+      line.className = 'measure-line';
+      line.style.left = `${x}px`;
+      els.ruler.appendChild(line);
 
-  gain.gain.setValueAtTime(0.2, state.audioCtx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.0001, state.audioCtx.currentTime + 1.1);
-
-  osc.start();
-  osc.stop(state.audioCtx.currentTime + 1.1);
-}
-
-function metroSecondsPerBeat(){
-  return 60.0 / (Number(bpmEl.value) || 120);
-}
-
-function scheduleClick(time, isDownbeat){
-  if(!clickToggle.checked || !state.audioCtx) return;
-
-  const osc = state.audioCtx.createOscillator();
-  const gain = state.audioCtx.createGain();
-  osc.type = "square";
-  osc.frequency.value = isDownbeat ? 1400 : 1000;
-  osc.connect(gain);
-  gain.connect(state.audioCtx.destination);
-
-  gain.gain.setValueAtTime(isDownbeat ? 0.35 : 0.22, time);
-  gain.gain.exponentialRampToValueAtTime(0.001, time + 0.04);
-
-  osc.start(time);
-  osc.stop(time + 0.04);
-}
-
-function metroScheduler(){
-  while(state.metroNextNoteTime < state.audioCtx.currentTime + state.metroScheduleAheadTime){
-    const beatNumber = state.metroBeatNumber;
-    const beatInBar = beatNumber % 4;
-
-    scheduleClick(state.metroNextNoteTime, beatInBar === 0);
-
-    const visualDelay = Math.max(0, (state.metroNextNoteTime - state.audioCtx.currentTime) * 1000);
-    const t = setTimeout(()=>{
-      if(state.metronomeOn || state.mode === "loop"){
-        setBeatVisual(beatInBar);
+      if (i < totalBars) {
+        const label = document.createElement('div');
+        label.className = 'measure-label';
+        label.style.left = `${x}px`;
+        label.textContent = `${i + 1}`;
+        els.ruler.appendChild(label);
       }
-    }, visualDelay);
-    state.pendingAudioTimeouts.push(t);
 
-    state.metroNextNoteTime += metroSecondsPerBeat();
-    state.metroBeatNumber++;
-  }
-}
-
-async function startMetronome(){
-  await ensureAudio();
-  stopMetronome();
-
-  state.metroBeatNumber = 0;
-  state.metroNextNoteTime = state.audioCtx.currentTime + 0.08;
-  state.metroTimerId = setInterval(metroScheduler, state.metroLookahead);
-  state.metronomeOn = true;
-  metroBtn.textContent = "メトロノーム停止";
-}
-
-function stopMetronome(){
-  if(state.metroTimerId){
-    clearInterval(state.metroTimerId);
-    state.metroTimerId = null;
-  }
-  state.metronomeOn = false;
-  metroBtn.textContent = "メトロノーム開始";
-  if(state.mode !== "loop") clearBeatVisual();
-}
-
-async function toggleMetronome(){
-  if(state.metronomeOn) stopMetronome();
-  else await startMetronome();
-}
-
-async function warmupAudioAndMic(){
-  if(state.warmedUp){
-    recordStatus.textContent = "ウォームアップ済み。";
-    return;
+      els.tracks.forEach(track => {
+        const tline = document.createElement('div');
+        tline.className = 'measure-line';
+        tline.style.left = `${x}px`;
+        track.appendChild(tline);
+      });
+    }
   }
 
-  try{
-    recordStatus.textContent = "ウォームアップ中…";
-    await ensureAudio();
-
-    const osc = state.audioCtx.createOscillator();
-    const gain = state.audioCtx.createGain();
-    gain.gain.value = 0.00001;
-    osc.connect(gain);
-    gain.connect(state.audioCtx.destination);
-    osc.start();
-    osc.stop(state.audioCtx.currentTime + 0.02);
-
-    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
-    stream.getTracks().forEach(t => t.stop());
-
-    state.warmedUp = true;
-    recordStatus.textContent = "ウォームアップ完了。";
-  }catch(e){
-    recordStatus.textContent = "ウォームアップ失敗。マイク許可を確認してみて。";
-  }
-}
-
-async function addChordToTimeline(){
-  const chord = currentChordName();
-  state.slots[state.cursor] = chord;
-
-  const root = chord.match(/^[A-G][b#]?/)[0];
-  const type = chord.replace(root, "").split("/")[0];
-
-  rememberChord(chord);
-
-  await playChord(root, type);
-  await playBass(root);
-
-  if(state.cursor < state.slots.length - 1){
-    state.cursor++;
-  }
-  renderTimeline();
-  saveState();
-}
-
-async function applyQuickChord(chord){
-  state.slots[state.cursor] = chord;
-
-  const parts = parseChordName(chord);
-  rootSel.value = parts.root;
-  typeSel.value = parts.type || "";
-  slashSel.value = parts.slash || "";
-
-  rememberChord(chord);
-  renderTimeline();
-
-  await playChord(parts.root, parts.type || "");
-  await playBass(parts.root);
-
-  if(state.cursor < state.slots.length - 1){
-    state.cursor++;
-  }
-  renderTimeline();
-  saveState();
-}
-
-function deleteChord(){
-  state.slots[state.cursor] = "-";
-  renderTimeline();
-  saveState();
-}
-
-function addBars(){
-  state.slots.push("-","-","-","-");
-  loopEndBarEl.value = state.slots.length;
-  renderTimeline();
-  saveState();
-}
-
-function moveLeft(){
-  state.cursor = Math.max(0, state.cursor - 1);
-  renderTimeline();
-}
-
-function moveRight(){
-  state.cursor = Math.min(state.cursor + 1, state.slots.length - 1);
-  renderTimeline();
-}
-
-async function playBarByIndex(barIndex){
-  state.playingBarIndex = barIndex;
-  renderTimeline();
-
-  const chord = state.slots[barIndex];
-  if(chord !== "-"){
-    const root = chord.match(/^[A-G][b#]?/)[0];
-    const type = chord.replace(root, "").split("/")[0];
-    await playChord(root, type);
-    await playBass(root);
-  }
-}
-
-function clearPendingChordTimeouts(){
-  if(state.pendingChordTimeouts.length){
-    state.pendingChordTimeouts.forEach(id=>clearTimeout(id));
-    state.pendingChordTimeouts = [];
-  }
-}
-
-function clearPendingAudioTimeouts(){
-  if(state.pendingAudioTimeouts.length){
-    state.pendingAudioTimeouts.forEach(id=>clearTimeout(id));
-    state.pendingAudioTimeouts = [];
-  }
-}
-
-function clearLoopRaf(){
-  if(state.loopRafId){
-    cancelAnimationFrame(state.loopRafId);
-    state.loopRafId = null;
-  }
-}
-
-function stopLiveWave(){
-  if(state.liveRAF){
-    cancelAnimationFrame(state.liveRAF);
-    state.liveRAF = null;
-  }
-  state.analyser = null;
-  state.liveDataArray = null;
-  state.liveTrail = [];
-  state.liveWriteX = 0;
-}
-
-function effectiveAudioStart(){
-  const autoTrim = Number(autoTrimEl.value) || 0;
-  const audioOffset = Number(audioOffsetEl.value) || 0;
-  return Math.max(0, autoTrim + audioOffset);
-}
-
-function getRegionLengthSec(){
-  if(!state.waveformDuration) return 0;
-  const effectiveSec = effectiveAudioStart();
-  return Math.max(0.2, state.waveformDuration - effectiveSec);
-}
-
-function stopLoop(){
-  clearPendingChordTimeouts();
-  clearPendingAudioTimeouts();
-  clearLoopRaf();
-
-  state.mode = "idle";
-  state.playingBarIndex = -1;
-  state.loopStartTime = 0;
-  loopBtn.textContent = "LOOP";
-  loopStatus.textContent = "LOOP停止。";
-
-  if(!audioPlayer.paused){
-    audioPlayer.pause();
+  function clearTrackDecorations() {
+    els.tracks.forEach(track => {
+      [...track.querySelectorAll('.measure-line,.clip,.ghost')].forEach(el => el.remove());
+    });
   }
 
-  if(!state.metronomeOn) clearBeatVisual();
-  renderTimeline();
-}
+  function renderAllClips() {
+    clearTrackDecorations();
 
-function scheduleLoopVisualsAndChords(startTime, chordOffsetSec){
-  const beatSec = metroSecondsPerBeat();
-  const barSec = beatSec * 4;
-  const range = normalizedLoopRange();
-  const startIndex = range.start - 1;
-  const loopBarCount = (range.end - range.start + 1);
+    const totalBars = state.bars;
+    for (let i = 0; i <= totalBars; i++) {
+      const x = beatsToPx(i * state.beatsPerBar);
+      els.tracks.forEach(track => {
+        const tline = document.createElement('div');
+        tline.className = 'measure-line';
+        tline.style.left = `${x}px`;
+        track.appendChild(tline);
+      });
+    }
 
-  function tick(){
-    if(state.mode !== "loop" || !state.audioCtx){
-      clearLoopRaf();
+    state.clips.forEach(renderClip);
+  }
+
+  function renderClip(clip) {
+    const trackEl = els.tracks[clip.track];
+    if (!trackEl) return;
+
+    let el = trackEl.querySelector(`.clip[data-id="${clip.id}"]`);
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'clip';
+      el.dataset.id = clip.id;
+      el.innerHTML = `
+        <div class="clip-header">
+          <span class="clip-title"></span>
+          <span class="clip-len"></span>
+        </div>
+        <canvas class="wave"></canvas>
+        <div class="handle left"></div>
+        <div class="handle right"></div>
+      `;
+      trackEl.appendChild(el);
+
+      el.addEventListener('pointerdown', onClipPointerDown);
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        selectClip(clip.id);
+      });
+    }
+
+    el.classList.toggle('selected', clip.id === state.selectedClipId);
+    el.style.left = `${timeToX(clip.startTime)}px`;
+    el.style.width = `${Math.max(24, timeToX(clip.duration))}px`;
+
+    el.querySelector('.clip-title').textContent = clip.name;
+    el.querySelector('.clip-len').textContent = `${clip.duration.toFixed(2)}s`;
+
+    drawWaveform(el.querySelector('.wave'), clip.wavePeaks);
+  }
+
+  function drawWaveform(canvas, peaks) {
+    const dpr = devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    const w = Math.max(1, Math.floor(rect.width));
+    const h = Math.max(1, Math.floor(rect.height));
+    canvas.width = Math.floor(w * dpr);
+    canvas.height = Math.floor(h * dpr);
+
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, w, h);
+
+    ctx.fillStyle = 'rgba(255,255,255,.06)';
+    ctx.fillRect(0, 0, w, h);
+
+    if (!peaks || !peaks.length) return;
+
+    ctx.strokeStyle = 'rgba(210,241,255,.9)';
+    ctx.lineWidth = 1;
+
+    const mid = h / 2;
+    const step = peaks.length / w;
+
+    ctx.beginPath();
+    for (let x = 0; x < w; x++) {
+      const idx = Math.floor(x * step);
+      const amp = peaks[idx] || 0;
+      const y1 = mid - amp * (h * 0.42);
+      const y2 = mid + amp * (h * 0.42);
+      ctx.moveTo(x + 0.5, y1);
+      ctx.lineTo(x + 0.5, y2);
+    }
+    ctx.stroke();
+  }
+
+  function selectClip(id) {
+    state.selectedClipId = id;
+    renderAllClips();
+    updateReadout();
+  }
+
+  async function startRecording() {
+    if (state.isRecording) return;
+    await audioCtx.resume();
+
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mr = new MediaRecorder(stream);
+    state.mediaRecorder = mr;
+    state.recChunks = [];
+    state.isRecording = true;
+    state.recordStartPerf = performance.now();
+
+    mr.ondataavailable = e => {
+      if (e.data.size > 0) state.recChunks.push(e.data);
+    };
+
+    mr.onstop = async () => {
+      const blob = new Blob(state.recChunks, { type: 'audio/webm' });
+      const arr = await blob.arrayBuffer();
+      const decoded = await audioCtx.decodeAudioData(arr.slice(0));
+
+      const duration = decoded.duration;
+      const peaks = makePeaks(decoded, 1000);
+
+      const clip = {
+        id: crypto.randomUUID(),
+        name: `Take ${state.clips.length + 1}`,
+        track: 0,
+        startTime: state.currentSongTime,
+        offset: 0,
+        duration,
+        sourceDuration: duration,
+        buffer: decoded,
+        wavePeaks: peaks,
+        source: null
+      };
+
+      state.clips.push(clip);
+      selectClip(clip.id);
+      renderAllClips();
+      updateReadout();
+
+      stream.getTracks().forEach(t => t.stop());
+    };
+
+    mr.start();
+    setStatus('録音中');
+  }
+
+  function stopRecording() {
+    if (!state.isRecording || !state.mediaRecorder) return;
+    state.isRecording = false;
+    state.mediaRecorder.stop();
+    setStatus('停止');
+  }
+
+  function makePeaks(audioBuffer, size = 1000) {
+    const channel = audioBuffer.getChannelData(0);
+    const block = Math.max(1, Math.floor(channel.length / size));
+    const peaks = [];
+    for (let i = 0; i < size; i++) {
+      let start = i * block;
+      let end = Math.min(channel.length, start + block);
+      let max = 0;
+      for (let j = start; j < end; j++) {
+        const v = Math.abs(channel[j]);
+        if (v > max) max = v;
+      }
+      peaks.push(max);
+    }
+    return peaks;
+  }
+
+  function stopPlayback() {
+    state.clips.forEach(c => {
+      if (c.source) {
+        try { c.source.stop(); } catch {}
+        c.source.disconnect();
+        c.source = null;
+      }
+    });
+    state.isPlaying = false;
+    cancelAnimationFrame(state.rafId);
+  }
+
+  function playFromCurrent() {
+    stopPlayback();
+    state.isPlaying = true;
+    state.playStartAudioTime = audioCtx.currentTime;
+    state.playStartSongTime = state.currentSongTime;
+
+    state.clips.forEach(clip => {
+      const clipEnd = clip.startTime + clip.duration;
+      if (clipEnd <= state.currentSongTime) return;
+
+      const src = audioCtx.createBufferSource();
+      src.buffer = clip.buffer;
+      src.connect(audioCtx.destination);
+
+      const songNow = state.currentSongTime;
+      const when = Math.max(0, clip.startTime - songNow);
+      let offset = clip.offset;
+      let playDur = clip.duration;
+
+      if (songNow > clip.startTime) {
+        const passed = songNow - clip.startTime;
+        offset += passed;
+        playDur -= passed;
+      }
+
+      if (playDur > 0) {
+        src.start(audioCtx.currentTime + when, offset, playDur);
+        clip.source = src;
+      }
+    });
+
+    tickPlayback();
+    setStatus('再生中');
+  }
+
+  function tickPlayback() {
+    if (!state.isPlaying) return;
+    const elapsed = audioCtx.currentTime - state.playStartAudioTime;
+    state.currentSongTime = state.playStartSongTime + elapsed;
+
+    if (state.currentSongTime >= songDurationSec()) {
+      state.currentSongTime = songDurationSec();
+      updatePlayhead();
+      updateReadout();
+      stopPlayback();
+      setStatus('停止');
       return;
     }
 
-    const now = state.audioCtx.currentTime;
-    const elapsed = now - startTime;
+    updatePlayhead();
+    updateReadout();
+    state.rafId = requestAnimationFrame(tickPlayback);
+  }
 
-    if(elapsed >= 0){
-      const beatInBar = Math.floor(elapsed / beatSec) % 4;
-      setBeatVisual(beatInBar);
+  function updatePlayhead() {
+    els.playhead.style.left = `${timeToX(state.currentSongTime)}px`;
+  }
 
-      const localBar = Math.floor(elapsed / barSec) % loopBarCount;
-      const barIndex = startIndex + localBar;
+  function deleteSelected() {
+    if (!state.selectedClipId) return;
+    state.clips = state.clips.filter(c => c.id !== state.selectedClipId);
+    state.selectedClipId = null;
+    renderAllClips();
+    updateReadout();
+  }
 
-      if(barIndex !== state.playingBarIndex){
-        state.playingBarIndex = barIndex;
-        state.cursor = barIndex;
-        renderTimeline();
+  function pointerToTimeline(e) {
+    const rect = els.timeline.getBoundingClientRect();
+    return {
+      x: e.clientX - rect.left + els.timeline.parentElement.scrollLeft,
+      y: e.clientY - rect.top + els.timeline.parentElement.scrollTop
+    };
+  }
 
-        const playAt = Math.max(0, chordOffsetSec * 1000);
-        const t = setTimeout(()=>{
-          if(state.mode !== "loop") return;
-          playBarByIndex(barIndex);
-        }, playAt);
+  function getTrackIndexFromY(y) {
+    const idx = Math.floor((y - state.trackTopOffset) / state.trackHeight);
+    return clamp(idx, 0, els.tracks.length - 1);
+  }
 
-        state.pendingChordTimeouts.push(t);
-      }
+  function onClipPointerDown(e) {
+    const clipEl = e.currentTarget;
+    const clipId = clipEl.dataset.id;
+    const clip = state.clips.find(c => c.id === clipId);
+    if (!clip) return;
+
+    selectClip(clip.id);
+
+    const p = pointerToTimeline(e);
+    const startX = p.x;
+    const originStart = clip.startTime;
+    const originDuration = clip.duration;
+    const originTrack = clip.track;
+
+    let mode = 'move';
+    if (e.target.classList.contains('handle')) {
+      mode = e.target.classList.contains('left') ? 'trimL' : 'trimR';
     }
 
-    state.loopRafId = requestAnimationFrame(tick);
-  }
-
-  tick();
-}
-
-async function startLoop(){
-  stopLoop();
-  state.mode = "loop";
-  loopBtn.textContent = "STOP LOOP";
-
-  await ensureAudio();
-
-  const chordOffset = Number(chordOffsetEl.value) || 0;
-  const audioStart = effectiveAudioStart();
-  const range = normalizedLoopRange();
-  const startIndex = range.start - 1;
-  const loopBarCount = range.end - range.start + 1;
-
-  const startTime = state.audioCtx.currentTime + 0.18;
-  state.loopStartTime = startTime;
-
-  if(clickToggle.checked){
-    const beatSec = metroSecondsPerBeat();
-    const totalBeats = Math.max(8, loopBarCount * 4);
-    for(let i = 0; i < totalBeats; i++){
-      const t = startTime + (i * beatSec);
-      scheduleClick(t, i % 4 === 0);
-    }
-  }
-
-  if(audioPlayer.src){
-    const delayMs = Math.max(0, (startTime - state.audioCtx.currentTime) * 1000);
-    const audioTimer = setTimeout(async ()=>{
-      if(state.mode !== "loop") return;
-      try{
-        const startSec = audioStart + (startIndex * metroSecondsPerBeat() * 4);
-        audioPlayer.pause();
-        audioPlayer.currentTime = Math.min(startSec, Math.max(0, audioPlayer.duration || startSec));
-        await audioPlayer.play();
-        loopStatus.textContent = `${range.start}〜${range.end}小節目をループ中。`;
-      }catch(e){
-        loopStatus.textContent = "コード再生中。録音は手動再生が必要かも。";
-      }
-    }, delayMs);
-    state.pendingAudioTimeouts.push(audioTimer);
-  }else{
-    loopStatus.textContent = `${range.start}〜${range.end}小節目をループ中。録音はまだ無し。`;
-  }
-
-  scheduleLoopVisualsAndChords(startTime, chordOffset);
-}
-
-function toggleLoop(){
-  if(state.mode === "loop") stopLoop();
-  else startLoop();
-}
-
-async function decodeBlobAndWaveform(blob){
-  const arrayBuffer = await blob.arrayBuffer();
-  const tempCtx = new (window.AudioContext || window.webkitAudioContext)();
-  const audioBuffer = await tempCtx.decodeAudioData(arrayBuffer.slice(0));
-
-  const ch = audioBuffer.getChannelData(0);
-  state.audioBufferMono = ch.slice(0);
-  state.waveformDuration = audioBuffer.duration;
-
-  const samples = 900;
-  const blockSize = Math.floor(ch.length / samples) || 1;
-  const data = [];
-
-  for(let i = 0; i < samples; i++){
-    let sum = 0;
-    const start = i * blockSize;
-    const end = Math.min(start + blockSize, ch.length);
-    for(let j = start; j < end; j++){
-      sum += Math.abs(ch[j]);
-    }
-    data.push(sum / Math.max(1, end - start));
-  }
-
-  state.waveformData = data;
-
-  await tempCtx.close();
-  detectAudioHead();
-  drawWaveform();
-}
-
-function detectAudioHead(){
-  if(!state.audioBufferMono || !state.audioBufferMono.length || !state.waveformDuration){
-    state.detectedHeadSec = null;
-    headDetectLabel.textContent = "頭出し: 未解析";
-    return;
-  }
-
-  const ch = state.audioBufferMono;
-  const sampleRate = Math.floor(ch.length / state.waveformDuration);
-  let max = 0;
-
-  for(let i = 0; i < ch.length; i++){
-    const v = Math.abs(ch[i]);
-    if(v > max) max = v;
-  }
-
-  const threshold = Math.max(0.015, max * 0.18);
-
-  let hit = -1;
-  for(let i = 0; i < ch.length; i++){
-    if(Math.abs(ch[i]) >= threshold){
-      hit = i;
-      break;
-    }
-  }
-
-  if(hit < 0){
-    state.detectedHeadSec = null;
-    headDetectLabel.textContent = "頭出し: 検出失敗";
-    return;
-  }
-
-  const sec = hit / sampleRate;
-  const rounded = Math.round(sec * 100) / 100;
-  state.detectedHeadSec = rounded;
-  headDetectLabel.textContent = "頭出し候補: " + rounded.toFixed(2) + "秒";
-}
-
-function applyDetectedHead(){
-  if(state.detectedHeadSec == null) return;
-  autoTrimEl.value = state.detectedHeadSec.toFixed(2);
-  drawWaveform();
-  saveState();
-  recordStatus.textContent = `頭出し候補 ${state.detectedHeadSec.toFixed(2)} 秒を反映。`;
-}
-
-function trimFromCanvasX(clientX){
-  const rect = waveCanvas.getBoundingClientRect();
-  const x = Math.max(0, Math.min(clientX - rect.left, rect.width));
-  const ratio = rect.width > 0 ? x / rect.width : 0;
-  const sec = ratio * state.waveformDuration;
-  return Math.max(0, Math.min(sec, state.waveformDuration || 0));
-}
-
-function getSnapStepSec(){
-  const bpm = Number(bpmEl.value) || 120;
-  const beatSec = 60 / bpm;
-  const div = snapDivisionEl.value;
-
-  if(div === "off") return null;
-  if(div === "1/4") return beatSec;
-  if(div === "1/8") return beatSec / 2;
-  if(div === "1/16") return beatSec / 4;
-  if(div === "1/32") return beatSec / 8;
-
-  return beatSec;
-}
-
-function snapTimeToGrid(sec){
-  if(!snapToggle.checked) return sec;
-
-  const duration = state.waveformDuration;
-  if(!duration) return sec;
-
-  const stepSec = getSnapStepSec();
-  if(!stepSec) return sec;
-
-  const strength = Number(snapStrengthEl.value) || 12;
-  const canvasWidth = waveCanvas.getBoundingClientRect().width;
-  const pxPerSec = canvasWidth / duration;
-
-  let closest = sec;
-  let minDist = Infinity;
-
-  for(let t = 0; t < duration + stepSec; t += stepSec){
-    const dist = Math.abs((t - sec) * pxPerSec);
-    if(dist < minDist){
-      minDist = dist;
-      closest = t;
-    }
-  }
-
-  if(minDist <= strength){
-    return Math.max(0, Math.min(closest, duration));
-  }
-
-  return sec;
-}
-
-function setTrimFromPointer(clientX){
-  if(!state.waveformDuration) return;
-  let sec = trimFromCanvasX(clientX);
-  sec = snapTimeToGrid(sec);
-  autoTrimEl.value = sec.toFixed(2);
-  drawWaveform();
-}
-
-function setRegionFromPointer(clientX){
-  if(!state.waveformDuration) return;
-
-  let sec = trimFromCanvasX(clientX);
-  sec = snapTimeToGrid(sec);
-
-  const trimSec = Math.max(0, Number(autoTrimEl.value) || 0);
-  const regionLen = getRegionLengthSec();
-  const maxStart = Math.max(0, state.waveformDuration - regionLen);
-
-  let newRegionStart = sec - state.regionDragOffsetSec;
-  newRegionStart = Math.max(0, Math.min(newRegionStart, maxStart));
-
-  const newOffset = newRegionStart - trimSec;
-  audioOffsetEl.value = newOffset.toFixed(2);
-  drawWaveform();
-}
-
-function getRegionBoundsPx(){
-  const rect = waveCanvas.getBoundingClientRect();
-  const w = rect.width;
-  const duration = Math.max(state.waveformDuration, 0.0001);
-  const regionStartSec = effectiveAudioStart();
-  const regionLenSec = getRegionLengthSec();
-  const startX = (regionStartSec / duration) * w;
-  const endX = ((regionStartSec + regionLenSec) / duration) * w;
-  return { startX, endX, width: w };
-}
-
-function hitTestDragMode(clientX){
-  if(!state.waveformDuration) return "trim";
-
-  const rect = waveCanvas.getBoundingClientRect();
-  const x = clientX - rect.left;
-  const trimSec = Math.max(0, Number(autoTrimEl.value) || 0);
-  const trimX = (trimSec / state.waveformDuration) * rect.width;
-  const region = getRegionBoundsPx();
-
-  if(Math.abs(x - trimX) <= 14) return "trim";
-  if(x >= region.startX && x <= region.endX) return "region";
-  return null;
-}
-
-function updateWaveCursor(mode){
-  if(state.dragMode === "region"){
-    waveCanvas.style.cursor = "grabbing";
-    return;
-  }
-  if(state.dragMode === "trim"){
-    waveCanvas.style.cursor = "ew-resize";
-    return;
-  }
-  if(mode === "region"){
-    waveCanvas.style.cursor = "grab";
-    return;
-  }
-  if(mode === "trim"){
-    waveCanvas.style.cursor = "ew-resize";
-    return;
-  }
-  waveCanvas.style.cursor = "default";
-}
-
-function attachWavePointer(){
-  waveCanvas.addEventListener("mousemove", (e)=>{
-    if(state.dragMode) return;
-    state.hoverMode = hitTestDragMode(e.clientX);
-    updateWaveCursor(state.hoverMode);
-  });
-
-  waveCanvas.addEventListener("mouseleave", ()=>{
-    if(state.dragMode) return;
-    state.hoverMode = null;
-    updateWaveCursor(null);
-    drawWaveform();
-  });
-
-  waveCanvas.addEventListener("mousedown", (e)=>{
-    state.dragMode = hitTestDragMode(e.clientX);
-
-    if(state.dragMode === "region"){
-      const pointerSec = trimFromCanvasX(e.clientX);
-      state.regionDragOffsetSec = pointerSec - effectiveAudioStart();
-      if(state.regionDragOffsetSec < 0) state.regionDragOffsetSec = 0;
-      updateWaveCursor("region");
-      setRegionFromPointer(e.clientX);
-    }else if(state.dragMode === "trim"){
-      updateWaveCursor("trim");
-      setTrimFromPointer(e.clientX);
-    }
-  });
-
-  window.addEventListener("mousemove", (e)=>{
-    if(!state.dragMode) return;
-    if(state.dragMode === "region") setRegionFromPointer(e.clientX);
-    else if(state.dragMode === "trim") setTrimFromPointer(e.clientX);
-  });
-
-  window.addEventListener("mouseup", ()=>{
-    if(!state.dragMode) return;
-    state.dragMode = null;
-    state.regionDragOffsetSec = 0;
-    updateWaveCursor(state.hoverMode);
-    saveState();
-    drawWaveform();
-  });
-
-  waveCanvas.addEventListener("touchstart", (e)=>{
-    if(!e.touches.length) return;
-    state.dragMode = hitTestDragMode(e.touches[0].clientX);
-
-    if(state.dragMode === "region"){
-      const pointerSec = trimFromCanvasX(e.touches[0].clientX);
-      state.regionDragOffsetSec = pointerSec - effectiveAudioStart();
-      if(state.regionDragOffsetSec < 0) state.regionDragOffsetSec = 0;
-      setRegionFromPointer(e.touches[0].clientX);
-    }else if(state.dragMode === "trim"){
-      setTrimFromPointer(e.touches[0].clientX);
-    }
-  }, {passive:true});
-
-  window.addEventListener("touchmove", (e)=>{
-    if(!state.dragMode || !e.touches.length) return;
-    if(state.dragMode === "region") setRegionFromPointer(e.touches[0].clientX);
-    else if(state.dragMode === "trim") setTrimFromPointer(e.touches[0].clientX);
-  }, {passive:true});
-
-  window.addEventListener("touchend", ()=>{
-    if(!state.dragMode) return;
-    state.dragMode = null;
-    state.regionDragOffsetSec = 0;
-    saveState();
-    drawWaveform();
-  });
-}
-
-function drawGrid(ctx, w, h, durationSec){
-  if(!durationSec) return;
-
-  const bpm = Number(bpmEl.value) || 120;
-  const beatSec = 60 / bpm;
-  const barSec = beatSec * 4;
-
-  let subStepSec = getSnapStepSec();
-  if(!subStepSec) subStepSec = beatSec;
-
-  ctx.strokeStyle = "rgba(255,255,255,0.06)";
-  ctx.lineWidth = 1;
-  for(let t = 0; t < durationSec; t += subStepSec){
-    const x = (t / durationSec) * w;
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, h);
-    ctx.stroke();
-  }
-
-  ctx.strokeStyle = "rgba(255,255,255,0.12)";
-  ctx.lineWidth = 1;
-  for(let t = 0; t < durationSec; t += beatSec){
-    const x = (t / durationSec) * w;
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, h);
-    ctx.stroke();
-  }
-
-  ctx.strokeStyle = "rgba(255,255,255,0.22)";
-  ctx.lineWidth = 2;
-  for(let t = 0; t < durationSec; t += barSec){
-    const x = (t / durationSec) * w;
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, h);
-    ctx.stroke();
-  }
-}
-
-function drawBarNumbers(ctx, w, h, durationSec){
-  if(!durationSec) return;
-
-  const bpm = Number(bpmEl.value) || 120;
-  const barSec = (60 / bpm) * 4;
-
-  ctx.fillStyle = "#8fa1c5";
-  ctx.font = "11px system-ui";
-
-  let bar = 1;
-  for(let t = 0; t < durationSec; t += barSec){
-    const x = (t / durationSec) * w;
-    ctx.fillText(String(bar), x + 4, 12);
-    bar++;
-  }
-}
-
-function drawLabel(ctx, text, x, y, bg, fg="#081226"){
-  const padX = 6;
-  const padY = 3;
-  ctx.font = "11px system-ui";
-  const metrics = ctx.measureText(text);
-  const width = metrics.width + padX * 2;
-  const height = 18;
-
-  ctx.fillStyle = bg;
-  ctx.fillRect(x, y, width, height);
-  ctx.fillStyle = fg;
-  ctx.fillText(text, x + padX, y + 12);
-}
-
-function drawLiveWaveform(){
-  if(!state.analyser || !state.liveDataArray) return;
-
-  const ctx = waveCanvas.getContext("2d");
-  const w = waveCanvas.width;
-  const h = waveCanvas.height;
-
-  state.analyser.getByteTimeDomainData(state.liveDataArray);
-
-  let sum = 0;
-  for(let i = 0; i < state.liveDataArray.length; i++){
-    sum += Math.abs(state.liveDataArray[i] - 128);
-  }
-  const avg = sum / state.liveDataArray.length / 128;
-  const yAmp = Math.max(1, avg * (h * 0.46));
-
-  state.liveTrail.push(yAmp);
-  if(state.liveTrail.length > w) state.liveTrail.shift();
-
-  ctx.clearRect(0,0,w,h);
-  ctx.fillStyle = "#0d1730";
-  ctx.fillRect(0,0,w,h);
-
-  drawGrid(ctx, w, h, 4.0);
-  drawBarNumbers(ctx, w, h, 4.0);
-
-  ctx.strokeStyle = "#243656";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(0, h / 2);
-  ctx.lineTo(w, h / 2);
-  ctx.stroke();
-
-  ctx.strokeStyle = "#3bb7ff";
-  ctx.lineWidth = 1.2;
-  ctx.beginPath();
-
-  const startX = Math.max(0, w - state.liveTrail.length);
-  for(let i = 0; i < state.liveTrail.length; i++){
-    const x = startX + i;
-    const amp = state.liveTrail[i];
-    ctx.moveTo(x, h / 2 - amp);
-    ctx.lineTo(x, h / 2 + amp);
-  }
-  ctx.stroke();
-
-  const playX = Math.min(w - 2, startX + state.liveTrail.length);
-  ctx.strokeStyle = "#8dd7ff";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(playX, 0);
-  ctx.lineTo(playX, h);
-  ctx.stroke();
-
-  waveInfo.textContent = "録音中ライブ波形";
-  if(state.mode === "recording"){
-    state.liveRAF = requestAnimationFrame(drawLiveWaveform);
-  }
-}
-
-function drawRegionWaveform(ctx, w, h){
-  if(!state.waveformData || !state.waveformData.length || !state.waveformDuration) return;
-
-  const regionStartSec = effectiveAudioStart();
-  const regionLenSec = getRegionLengthSec();
-
-  const startRatio = regionStartSec / state.waveformDuration;
-  const endRatio = Math.min(1, (regionStartSec + regionLenSec) / state.waveformDuration);
-
-  const startIndex = Math.floor(startRatio * state.waveformData.length);
-  const endIndex = Math.max(startIndex + 1, Math.floor(endRatio * state.waveformData.length));
-
-  const regionX = (regionStartSec / state.waveformDuration) * w;
-  const regionW = Math.max(6, ((regionLenSec) / state.waveformDuration) * w);
-
-  const sliceCount = Math.max(1, endIndex - startIndex);
-  const step = regionW / sliceCount;
-
-  ctx.strokeStyle = "#8df5c8";
-  ctx.lineWidth = 1.2;
-  ctx.beginPath();
-
-  for(let i = 0; i < sliceCount; i++){
-    const amp = state.waveformData[startIndex + i] || 0;
-    const barH = amp * (h * 0.42);
-    const x = regionX + (i * step);
-    ctx.moveTo(x, h / 2 - barH);
-    ctx.lineTo(x, h / 2 + barH);
-  }
-  ctx.stroke();
-}
-
-function drawWaveform(){
-  const ctx = waveCanvas.getContext("2d");
-  const w = waveCanvas.width;
-  const h = waveCanvas.height;
-
-  ctx.clearRect(0,0,w,h);
-  ctx.fillStyle = "#0d1730";
-  ctx.fillRect(0,0,w,h);
-
-  if(!state.waveformData || !state.waveformData.length || !state.waveformDuration){
-    ctx.strokeStyle = "#243656";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(0, h / 2);
-    ctx.lineTo(w, h / 2);
-    ctx.stroke();
-
-    ctx.fillStyle = "#8fa1c5";
-    ctx.font = "14px system-ui";
-    ctx.fillText("録音後に波形が表示されます", 20, 30);
-    return;
-  }
-
-  drawGrid(ctx, w, h, state.waveformDuration);
-  drawBarNumbers(ctx, w, h, state.waveformDuration);
-
-  ctx.strokeStyle = "#243656";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(0, h / 2);
-  ctx.lineTo(w, h / 2);
-  ctx.stroke();
-
-  const max = Math.max(...state.waveformData, 0.001);
-  const step = w / state.waveformData.length;
-
-  ctx.strokeStyle = "#3bb7ff";
-  ctx.lineWidth = 1.0;
-  ctx.beginPath();
-
-  for(let i = 0; i < state.waveformData.length; i++){
-    const v = state.waveformData[i] / max;
-    const barH = v * (h * 0.32);
-    const x = i * step;
-    ctx.moveTo(x, h / 2 - barH);
-    ctx.lineTo(x, h / 2 + barH);
-  }
-  ctx.stroke();
-
-  const trimSec = Math.max(0, Number(autoTrimEl.value) || 0);
-  const regionStartSec = effectiveAudioStart();
-  const regionLenSec = getRegionLengthSec();
-
-  const trimX = Math.min(w, (trimSec / state.waveformDuration) * w);
-  const regionX = Math.min(w, (regionStartSec / state.waveformDuration) * w);
-  const regionW = Math.max(6, Math.min(w - regionX, (regionLenSec / state.waveformDuration) * w));
-
-  let regionFill = "rgba(56,211,159,0.18)";
-  let regionStroke = "#38d39f";
-  let trimStroke = "#ffc857";
-
-  if(state.hoverMode === "region") regionFill = "rgba(56,211,159,0.24)";
-  if(state.dragMode === "region"){
-    regionFill = "rgba(56,211,159,0.30)";
-    regionStroke = "#72ffd0";
-  }
-  if(state.hoverMode === "trim") trimStroke = "#ffd56a";
-  if(state.dragMode === "trim") trimStroke = "#fff1a6";
-
-  ctx.fillStyle = regionFill;
-  ctx.fillRect(regionX, 0, regionW, h);
-
-  drawRegionWaveform(ctx, w, h);
-
-  ctx.strokeStyle = regionStroke;
-  ctx.lineWidth = 2;
-  ctx.strokeRect(regionX, 0, regionW, h);
-
-  ctx.strokeStyle = trimStroke;
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(trimX, 0);
-  ctx.lineTo(trimX, h);
-  ctx.stroke();
-
-  drawLabel(ctx, "リージョン", Math.min(regionX + 4, w - 70), 16, regionStroke, "#081226");
-  drawLabel(ctx, "頭出し", Math.min(trimX + 4, w - 56), 36, trimStroke, "#081226");
-
-  ctx.fillStyle = "#8fa1c5";
-  ctx.font = "12px system-ui";
-  ctx.fillText(`長さ: ${state.waveformDuration.toFixed(2)} 秒`, 12, h - 10);
-  waveInfo.textContent = `長さ ${state.waveformDuration.toFixed(2)} 秒 / 頭出し ${trimSec.toFixed(2)} 秒 / リージョン ${regionStartSec.toFixed(2)} 秒`;
-}
-
-async function startRecording(){
-  if(state.mode === "recording") return;
-  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-    recordStatus.textContent = "このブラウザでは録音APIが使えないみたい。";
-    return;
-  }
-
-  try{
-    await ensureAudio();
-    recordStatus.textContent = "録音開始中…";
-
-    state.mediaStream = await navigator.mediaDevices.getUserMedia({audio:true});
-    state.recordedChunks = [];
-    state.liveTrail = [];
-    state.liveWriteX = 0;
-
-    const source = state.audioCtx.createMediaStreamSource(state.mediaStream);
-    state.analyser = state.audioCtx.createAnalyser();
-    state.analyser.fftSize = 1024;
-    state.liveDataArray = new Uint8Array(state.analyser.fftSize);
-    source.connect(state.analyser);
-
-    state.mediaRecorder = new MediaRecorder(state.mediaStream);
-
-    state.mediaRecorder.ondataavailable = (e)=>{
-      if(e.data && e.data.size > 0) state.recordedChunks.push(e.data);
+    state.drag = {
+      clipId,
+      mode,
+      startX,
+      originStart,
+      originDuration,
+      originTrack,
+      ghost: createGhost(clip)
     };
 
-    state.mediaRecorder.onstop = async ()=>{
-      stopLiveWave();
+    clipEl.setPointerCapture(e.pointerId);
+    clipEl.classList.add('dragging');
 
-      state.recordedBlob = new Blob(
-        state.recordedChunks,
-        { type: state.mediaRecorder.mimeType || "audio/webm" }
-      );
-
-      audioPlayer.src = URL.createObjectURL(state.recordedBlob);
-
-      if(state.mediaStream){
-        state.mediaStream.getTracks().forEach(t => t.stop());
-      }
-
-      state.mediaStream = null;
-      state.mediaRecorder = null;
-      state.mode = "idle";
-      recordStatus.textContent = "録音できた。必要なら『録音を保存』でダウンロード。";
-
-      try{
-        await decodeBlobAndWaveform(state.recordedBlob);
-      }catch(e){
-        waveInfo.textContent = "波形解析失敗";
-        headDetectLabel.textContent = "頭出し: 失敗";
-      }
+    const move = (ev) => onClipPointerMove(ev, clipEl);
+    const up = (ev) => {
+      clipEl.releasePointerCapture(ev.pointerId);
+      clipEl.classList.remove('dragging');
+      clipEl.removeEventListener('pointermove', move);
+      clipEl.removeEventListener('pointerup', up);
+      clipEl.removeEventListener('pointercancel', up);
+      if (state.drag?.ghost) state.drag.ghost.remove();
+      state.drag = null;
+      renderAllClips();
     };
 
-    state.mediaRecorder.start();
-    state.mode = "recording";
-    recordStatus.textContent = "録音中…『録音停止』で止める。";
+    clipEl.addEventListener('pointermove', move);
+    clipEl.addEventListener('pointerup', up);
+    clipEl.addEventListener('pointercancel', up);
+  }
 
-    drawLiveWaveform();
-  }catch(err){
-    stopLiveWave();
-    state.mode = "idle";
-    if(state.mediaStream){
-      state.mediaStream.getTracks().forEach(t => t.stop());
-      state.mediaStream = null;
+  function createGhost(clip) {
+    const trackEl = els.tracks[clip.track];
+    const ghost = document.createElement('div');
+    ghost.className = 'ghost';
+    ghost.style.left = `${timeToX(clip.startTime)}px`;
+    ghost.style.width = `${Math.max(24, timeToX(clip.duration))}px`;
+    trackEl.appendChild(ghost);
+    return ghost;
+  }
+
+  function onClipPointerMove(e, clipEl) {
+    if (!state.drag) return;
+    const clip = state.clips.find(c => c.id === state.drag.clipId);
+    if (!clip) return;
+
+    const p = pointerToTimeline(e);
+    const dx = p.x - state.drag.startX;
+    const dBeats = snapBeats(pxToBeats(dx));
+    const dSec = dBeats * secPerBeat();
+
+    if (state.drag.mode === 'move') {
+      const nextTrack = getTrackIndexFromY(p.y);
+      let nextStart = clamp(state.drag.originStart + dSec, 0, songDurationSec() - clip.duration);
+      clip.startTime = nextStart;
+      clip.track = nextTrack;
     }
-    state.mediaRecorder = null;
-    recordStatus.textContent = "録音開始に失敗。マイク許可を確認してみて。";
+
+    if (state.drag.mode === 'trimL') {
+      const minDur = 0.1;
+      let newStart = clamp(state.drag.originStart + dSec, 0, state.drag.originStart + state.drag.originDuration - minDur);
+      let diff = newStart - state.drag.originStart;
+      clip.startTime = newStart;
+      clip.offset = clamp(clip.offset + diff, 0, clip.sourceDuration - minDur);
+      clip.duration = clamp(state.drag.originDuration - diff, minDur, clip.sourceDuration - clip.offset);
+    }
+
+    if (state.drag.mode === 'trimR') {
+      const minDur = 0.1;
+      let newDur = clamp(state.drag.originDuration + dSec, minDur, clip.sourceDuration - clip.offset);
+      if (clip.startTime + newDur > songDurationSec()) {
+        newDur = songDurationSec() - clip.startTime;
+      }
+      clip.duration = Math.max(minDur, newDur);
+    }
+
+    if (state.drag.ghost) {
+      if (state.drag.mode === 'move' && clip.track !== state.drag.originTrack) {
+        state.drag.ghost.remove();
+        state.drag.ghost = createGhost(clip);
+        state.drag.originTrack = clip.track;
+      }
+      state.drag.ghost.style.left = `${timeToX(clip.startTime)}px`;
+      state.drag.ghost.style.width = `${Math.max(24, timeToX(clip.duration))}px`;
+    }
+
+    renderAllClips();
+    updateReadout();
   }
-}
 
-function stopRecording(){
-  if(state.mode !== "recording" || !state.mediaRecorder) return;
-  recordStatus.textContent = "停止中…";
-  state.mediaRecorder.stop();
-}
+  els.timeline.addEventListener('click', (e) => {
+    if (e.target.closest('.clip')) return;
+    const p = pointerToTimeline(e);
+    state.currentSongTime = clamp(xToTime(p.x), 0, songDurationSec());
+    updatePlayhead();
+    updateReadout();
+  });
 
-function downloadRecording(){
-  if(!state.recordedBlob) return;
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(state.recordedBlob);
-  a.download = "hook-recording.webm";
-  a.click();
-}
+  els.recBtn.addEventListener('click', async () => {
+    try {
+      await startRecording();
+    } catch (err) {
+      console.error(err);
+      setStatus('録音失敗');
+      alert('マイクの許可が必要です。');
+    }
+  });
 
-document.getElementById("setLoopToSelectionBtn").onclick = ()=>{
-  loopStartBarEl.value = state.cursor + 1;
-  if(parseInt(loopEndBarEl.value || "1", 10) < state.cursor + 1){
-    loopEndBarEl.value = state.cursor + 1;
-  }
-  renderTimeline();
-  saveState();
-};
+  els.stopBtn.addEventListener('click', () => {
+    stopRecording();
+    stopPlayback();
+    setStatus('停止');
+  });
 
-document.getElementById("setLoopEndToSelectionBtn").onclick = ()=>{
-  loopEndBarEl.value = state.cursor + 1;
-  if(parseInt(loopStartBarEl.value || "1", 10) > state.cursor + 1){
-    loopStartBarEl.value = state.cursor + 1;
-  }
-  renderTimeline();
-  saveState();
-};
+  els.playBtn.addEventListener('click', async () => {
+    await audioCtx.resume();
+    playFromCurrent();
+  });
 
-document.getElementById("addChordBtn").onclick = async ()=>{ await addChordToTimeline(); };
-document.getElementById("previewBtn").onclick = ()=>{ playChord(rootSel.value, typeSel.value); };
-document.getElementById("deleteBtn").onclick = deleteChord;
-document.getElementById("addBarsBtn").onclick = addBars;
-document.getElementById("leftBtn").onclick = moveLeft;
-document.getElementById("rightBtn").onclick = moveRight;
-loopBtn.onclick = toggleLoop;
+  els.pauseBtn.addEventListener('click', () => {
+    if (!state.isPlaying) return;
+    const elapsed = audioCtx.currentTime - state.playStartAudioTime;
+    state.currentSongTime = state.playStartSongTime + elapsed;
+    stopPlayback();
+    updatePlayhead();
+    updateReadout();
+    setStatus('一時停止');
+  });
 
-warmupBtn.onclick = warmupAudioAndMic;
-metroBtn.onclick = toggleMetronome;
-startRecBtn.onclick = startRecording;
-stopRecBtn.onclick = stopRecording;
-downloadRecBtn.onclick = downloadRecording;
-detectHeadBtn.onclick = applyDetectedHead;
+  els.deleteBtn.addEventListener('click', deleteSelected);
 
-rootSel.onchange = ()=>{ playChord(rootSel.value, typeSel.value); };
-typeSel.onchange = ()=>{ playChord(rootSel.value, typeSel.value); };
-slashSel.onchange = ()=>{ playChord(rootSel.value, typeSel.value); };
-keySelect.onchange = ()=>{ renderDiatonicChords(); saveState(); drawWaveform(); };
+  els.bpm.addEventListener('input', updateTimelineSize);
+  els.bars.addEventListener('input', updateTimelineSize);
+  els.zoom.addEventListener('input', updateTimelineSize);
 
-bpmEl.addEventListener("change", ()=>{ saveState(); drawWaveform(); });
-autoTrimEl.addEventListener("change", ()=>{ saveState(); drawWaveform(); });
-audioOffsetEl.addEventListener("change", ()=>{ saveState(); drawWaveform(); });
-chordOffsetEl.addEventListener("change", saveState);
-clickToggle.addEventListener("change", saveState);
-snapToggle.addEventListener("change", ()=>{ saveState(); drawWaveform(); });
-snapDivisionEl.addEventListener("change", ()=>{ saveState(); drawWaveform(); });
-snapStrengthEl.addEventListener("change", saveState);
-loopStartBarEl.addEventListener("change", ()=>{ renderTimeline(); saveState(); });
-loopEndBarEl.addEventListener("change", ()=>{ renderTimeline(); saveState(); });
-lyricsEl.addEventListener("input", saveState);
-projectNameEl.addEventListener("input", saveState);
+  window.addEventListener('resize', renderAllClips);
 
-buildSelects();
-loadState();
-renderTimeline();
-drawWaveform();
-renderRootPad();
-renderDiatonicChords();
-renderRecentChords();
-attachWavePointer();
+  updateTimelineSize();
+  updateReadout();
+  setStatus('待機中');
+})();
 </script>
 </body>
 </html>
