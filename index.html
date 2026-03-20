@@ -1,5 +1,4 @@
-<!DOCTYPE html>
-<html lang="ja">
+<!DOCTYPE html><html lang="ja">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -274,78 +273,75 @@ label{
       <button id="stopBtn" class="warn">■ 停止</button>
       <button id="playBtn" class="primary">▶ 再生</button>
       <button id="pauseBtn">⏸ 一時停止</button>
-      <button id="deleteBtn">削除</button>
+      <button id="deleteBtn">削除</button><div>
+    <label for="bpm">BPM</label>
+    <input id="bpm" type="number" min="40" max="240" value="120" style="width:90px">
+  </div>
 
-      <div>
-        <label for="bpm">BPM</label>
-        <input id="bpm" type="number" min="40" max="240" value="120" style="width:90px">
-      </div>
+  <div>
+    <label for="bars">小節数</label>
+    <input id="bars" type="number" min="4" max="128" value="16" style="width:90px">
+  </div>
 
-      <div>
-        <label for="bars">小節数</label>
-        <input id="bars" type="number" min="4" max="128" value="16" style="width:90px">
-      </div>
+  <div>
+    <label for="snap">スナップ</label>
+    <select id="snap">
+      <option value="1">1拍</option>
+      <option value="0.5">1/2拍</option>
+      <option value="0.25">1/4拍</option>
+      <option value="0">なし</option>
+    </select>
+  </div>
 
-      <div>
-        <label for="snap">スナップ</label>
-        <select id="snap">
-          <option value="1">1拍</option>
-          <option value="0.5">1/2拍</option>
-          <option value="0.25">1/4拍</option>
-          <option value="0">なし</option>
-        </select>
-      </div>
+  <div>
+    <label for="zoom">ズーム</label>
+    <input id="zoom" type="range" min="40" max="180" value="80">
+  </div>
+</div>
 
-      <div>
-        <label for="zoom">ズーム</label>
-        <input id="zoom" type="range" min="40" max="180" value="80">
-      </div>
+<div class="row">
+  <div class="side">
+    <div class="panel" style="padding:12px;">
+      <div class="stat"><span>状態</span><strong id="statusText">待機中</strong></div>
+      <div class="stat"><span>現在位置</span><strong id="posText">1:1</strong></div>
+      <div class="stat"><span>選択クリップ</span><strong id="selText">なし</strong></div>
+      <div class="stat"><span>録音数</span><strong id="countText">0</strong></div>
     </div>
 
-    <div class="row">
-      <div class="side">
-        <div class="panel" style="padding:12px;">
-          <div class="stat"><span>状態</span><strong id="statusText">待機中</strong></div>
-          <div class="stat"><span>現在位置</span><strong id="posText">1:1</strong></div>
-          <div class="stat"><span>選択クリップ</span><strong id="selText">なし</strong></div>
-          <div class="stat"><span>録音数</span><strong id="countText">0</strong></div>
-        </div>
-
-        <div class="panel" style="padding:12px;">
-          <div class="info">
-            使い方<br>
-            ・<span class="kbd">録音</span>で新規クリップ作成<br>
-            ・クリップ本体をドラッグで移動<br>
-            ・左右端をドラッグで長さ変更<br>
-            ・再生ヘッドはタイムラインをクリックで移動
-          </div>
-        </div>
-      </div>
-
-      <div class="timeline-wrap">
-        <div id="timeline" class="timeline">
-          <div id="ruler" class="ruler"></div>
-          <div class="track" data-track="0">
-            <div class="track-name">Track 1</div>
-          </div>
-          <div class="track" data-track="1">
-            <div class="track-name">Track 2</div>
-          </div>
-          <div class="track" data-track="2">
-            <div class="track-name">Track 3</div>
-          </div>
-          <div id="playhead" class="playhead"></div>
-        </div>
+    <div class="panel" style="padding:12px;">
+      <div class="info">
+        使い方<br>
+        ・<span class="kbd">録音</span>で新規クリップ作成<br>
+        ・クリップ本体をドラッグで移動<br>
+        ・左右端をドラッグで長さ変更<br>
+        ・再生ヘッドはタイムラインをクリックで移動
       </div>
     </div>
+  </div>
 
-    <div class="footer-note">
-      これはブラウザだけで動く試作版。波形は簡易表示だけど、「塊をそのまま掴んで動かす」挙動はDAW寄りにしてある。
+  <div class="timeline-wrap">
+    <div id="timeline" class="timeline">
+      <div id="ruler" class="ruler"></div>
+      <div class="track" data-track="0">
+        <div class="track-name">Track 1</div>
+      </div>
+      <div class="track" data-track="1">
+        <div class="track-name">Track 2</div>
+      </div>
+      <div class="track" data-track="2">
+        <div class="track-name">Track 3</div>
+      </div>
+      <div id="playhead" class="playhead"></div>
     </div>
   </div>
 </div>
 
-<script>
+<div class="footer-note">
+  これはブラウザだけで動く試作版。波形は簡易表示だけど、「塊をそのまま掴んで動かす」挙動はDAW寄りにしてある。
+</div>
+
+  </div>
+</div><script>
 (() => {
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
   const audioCtx = new AudioContextClass();
@@ -909,6 +905,5 @@ label{
   updateReadout();
   setStatus('待機中');
 })();
-</script>
-</body>
+</script></body>
 </html>
